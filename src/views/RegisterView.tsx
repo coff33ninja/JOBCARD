@@ -43,6 +43,12 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
   const today = getTodayISO();
 
   useEffect(() => {
+    if (initialStatusFilter !== undefined) {
+      setStatusFilter(initialStatusFilter);
+    }
+  }, [initialStatusFilter]);
+
+  useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
       try {

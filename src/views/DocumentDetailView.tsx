@@ -331,6 +331,55 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
             </>
           )}
 
+          {doc.type === 'jobcard' && !isDraft && (
+            <div className="flex items-center gap-1.5">
+              {doc.status === 'open' && (
+                <button
+                  onClick={async () => {
+                    await api.updateStatus(doc.id, 'in_progress');
+                    await loadDocumentData();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-xs transition-colors"
+                >
+                  Start Work (In Progress)
+                </button>
+              )}
+              {doc.status === 'in_progress' && (
+                <button
+                  onClick={async () => {
+                    await api.updateStatus(doc.id, 'completed');
+                    await loadDocumentData();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md shadow-xs transition-colors"
+                >
+                  Mark Work Completed
+                </button>
+              )}
+              {doc.status === 'completed' && (
+                <button
+                  onClick={async () => {
+                    await api.updateStatus(doc.id, 'closed');
+                    await loadDocumentData();
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md shadow-xs transition-colors"
+                >
+                  Close Job Card
+                </button>
+              )}
+              {doc.status === 'closed' && (
+                <button
+                  onClick={async () => {
+                    await api.updateStatus(doc.id, 'open');
+                    await loadDocumentData();
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 rounded-md border border-slate-200"
+                >
+                  Reopen
+                </button>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => window.print()}
             className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 shadow-xs"
