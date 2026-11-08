@@ -1,0 +1,254 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ApiClient } from './client.ts';
+import { MockApi } from './mockApi.ts';
+import { HttpApi } from './httpApi.ts';
+import { RawSeedData } from './seedLoader.ts';
+import rawSeedData from '../../seed/seed.json';
+import { ApiError } from './types.ts';
+
+function runApiContractSuite(name: string, createClient: () => ApiClient) {
+  test(`[${name}] Client CRUD operations`, async () => {
+    const api = createClient();
+    const initialClients = await api.listClients();
+    assert.ok(initialClients.length >= 6);
+
+    // Create client
+    const newClient = await api.createClient({
+      name: 'Contract Test Corp',
+      contact: 'Tester Alice',
+      phone: '0829990000',
+      email: 'alice@contract.test',
+      address: '100 Test Blvd',
+      notes: 'Automated contract test client',
+    });
+    assert.ok(newClient.id);
+    assert.equal(newClient.name, 'Contract Test Corp');
+
+    // Update client
+    const updated = await api.updateClient(newClient.id, {
+      contact: 'Tester Bob',
+    });
+    assert.equal(updated.contact, 'Tester Bob');
+    assert.equal(updated.name, 'Contract Test Corp');
+
+    // Validation: empty name throws 400
+    await assert.rejects(
+      async () => {
+        await api.createClient({ name: '' });
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 400);
+        return true;
+      }
+    );
+  });
+
+  test(`[${name}] Document draft creation, updating, and issuing sequence`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+    const clientId = clients[0].id;
+
+    // 1. Create draft invoice
+    const draft = await api.createDraft({
+      type: 'invoice',
+      clientId,
+      reference: 'Contract Test Device',
+      scope: 'Diagnostic check',
+      lines: [
+        { description: 'Testing fee', qty: 1, unitPriceCents: 50000, totalCents: 50000 },
+      ],
+    });
+
+    assert.equal(draft.type, 'invoice');
+    assert.equal(draft.number, null);
+    assert.equal(draft.status, 'draft');
+    assert.equal(draft.totalCents, 50000);
+
+    // 2. Update draft
+    const updatedDraft = await api.updateDraft(draft.id, {
+      scope: 'Diagnostic check + thermal paste',
+      lines: [
+        { description: 'Testing fee', qty: 1, unitPriceCents: 50000, totalCents: 50000 },
+        { description: 'Thermal paste', qty: 1, unitPriceCents: 20000, totalCents: 20000 },
+      ],
+    });
+    assert.equal(updatedDraft.totalCents, 70000);
+
+    // 3. Issue document assigns sequential number
+    const issued = await api.issueDocument(draft.id, '2026-11-08');
+    assert.ok(issued.number);
+    assert.match(issued.number, /^INV-2026-\d{3}$/);
+    assert.equal(issued.status, 'sent');
+    assert.equal(issued.issueDate, '2026-11-08');
+    assert.ok(issued.dueDate);
+
+    // 4. Immutability of issued document: cannot re-issue or edit
+    await assert.rejects(
+      async () => {
+        await api.issueDocument(draft.id);
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 409);
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      async () => {
+        await api.updateDraft(draft.id, { scope: 'Attempted edit after issue' });
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 409);
+        return true;
+      }
+    );
+  });
+
+  test(`[${name}] Payment effects and overpayment rejection (422)`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+
+    const draft = await api.createDraft({
+      type: 'invoice',
+      clientId: clients[0].id,
+      reference: 'Payment Test Rig',
+      lines: [{ description: 'Motherboard Repair', qty: 1, unitPriceCents: 100000, totalCents: 100000 }],
+    });
+    const issued = await api.issueDocument(draft.id, '2026-11-08');
+
+    // Partial payment: 40000 cents
+    const partPaid = await api.addPayment(issued.id, {
+      date: '2026-11-08',
+      amountCents: 40000,
+      method: 'EFT',
+      reference: 'PART-1',
+    });
+    assert.equal(partPaid.payments.length, 1);
+    assert.equal(partPaid.status, 'partially_paid');
+
+    // Overpayment rejection: remaining balance is 60000, paying 70000 must reject with 422
+    await assert.rejects(
+      async () => {
+        await api.addPayment(issued.id, {
+          date: '2026-11-08',
+          amountCents: 70000,
+          method: 'EFT',
+          reference: 'OVERPAY',
+        });
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 422);
+        assert.equal(apiErr.code, 'OVERPAYMENT_REJECTED');
+        return true;
+      }
+    );
+
+    // Final payment of remaining 60000 marks status paid
+    const fullPaid = await api.addPayment(issued.id, {
+      date: '2026-11-08',
+      amountCents: 60000,
+      method: 'EFT',
+      reference: 'FULL-2',
+    });
+    assert.equal(fullPaid.payments.length, 2);
+    assert.equal(fullPaid.status, 'paid');
+  });
+
+  test(`[${name}] Quotation conversion to invoice`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+
+    const quoDraft = await api.createDraft({
+      type: 'quotation',
+      clientId: clients[0].id,
+      reference: 'Quote convert test',
+      scope: 'Network installation',
+      lines: [{ description: 'Cable spool', qty: 1, unitPriceCents: 120000, totalCents: 120000 }],
+    });
+    const quoIssued = await api.issueDocument(quoDraft.id, '2026-11-08');
+    assert.match(quoIssued.number!, /^QUO-2026-\d{3}$/);
+
+    // Convert quotation
+    const newInvoice = await api.convertQuotation(quoIssued.id);
+    assert.equal(newInvoice.type, 'invoice');
+    assert.equal(newInvoice.number, null); // draft until issued
+    assert.equal(newInvoice.quotationId, quoIssued.id);
+    assert.equal(newInvoice.totalCents, 120000);
+
+    // Source quotation must now be 'converted'
+    const updatedQuo = await api.getDocument(quoIssued.id);
+    assert.equal(updatedQuo.status, 'converted');
+
+    // Cannot convert an already converted quotation
+    await assert.rejects(
+      async () => {
+        await api.convertQuotation(quoIssued.id);
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 409);
+        return true;
+      }
+    );
+  });
+
+  test(`[${name}] Document export constraints (drafts blocked, issued allowed)`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+
+    const draft = await api.createDraft({
+      type: 'invoice',
+      clientId: clients[0].id,
+      reference: 'Export Test',
+      lines: [{ description: 'Part', qty: 1, unitPriceCents: 10000, totalCents: 10000 }],
+    });
+
+    // Drafts must not be exported
+    await assert.rejects(
+      async () => {
+        await api.exportDocument(draft.id, 'pdf');
+      },
+      (err: unknown) => {
+        const apiErr = err as ApiError;
+        assert.equal(apiErr.status, 400);
+        return true;
+      }
+    );
+
+    // Issue then export
+    const issued = await api.issueDocument(draft.id, '2026-11-08');
+    const blob = await api.exportDocument(issued.id, 'pdf');
+    assert.ok(blob);
+    assert.ok(blob.size > 0);
+  });
+
+  test(`[${name}] Settings and Dashboard queries`, async () => {
+    const api = createClient();
+    const settings = await api.getSettings();
+    assert.ok(settings.businessName);
+
+    const dashboard = await api.getDashboard(2026);
+    assert.equal(dashboard.year, 2026);
+    assert.ok(dashboard.totals.invoicedCents >= 0);
+    assert.ok(dashboard.monthly.length === 12);
+    assert.ok(dashboard.nextNumbers.invoice);
+    assert.ok(dashboard.nextNumbers.quotation);
+    assert.ok(dashboard.nextNumbers.jobcard);
+  });
+}
+
+// 1. Run against MockApi
+runApiContractSuite('MockApi', () => {
+  return new MockApi(rawSeedData as unknown as RawSeedData, '2026-11-08');
+});
+
+// 2. Run against HttpApi if VITE_API_URL or API_URL is set in environment
+if (process.env.VITE_API_URL || process.env.API_URL) {
+  const url = process.env.VITE_API_URL || process.env.API_URL;
+  runApiContractSuite('HttpApi', () => new HttpApi(url));
+}

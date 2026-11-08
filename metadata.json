@@ -1,0 +1,6 @@
+{
+  "name": "JobCard",
+  "description": "Job card, quotation and invoice manager for an IT repair business.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,649 @@
+{
+  "settings": {
+    "businessName": "Example IT Repairs",
+    "person": "Alex Morgan",
+    "phone": "000 000 0000",
+    "email": "info@example.co.za",
+    "location": "Cape Town, South Africa",
+    "bankName": "Example Bank",
+    "accountHolder": "Example IT Repairs",
+    "accountNumber": "0000000000",
+    "branchCode": "000000",
+    "taxRate": 0,
+    "defaultTermsDays": 7,
+    "quoteValidityDays": 14
+  },
+  "storage": {
+    "dataDir": "%APPDATA%\\JobCard",
+    "dbPath": "%APPDATA%\\JobCard\\jobcard.sqlite",
+    "clientsDir": "%APPDATA%\\JobCard\\Clients"
+  },
+  "capabilities": {
+    "docx": true,
+    "pdf": true,
+    "revealInFolder": true
+  },
+  "clients": [
+    {
+      "id": "cli-1",
+      "name": "Apex Logistics",
+      "contact": "John Smith",
+      "phone": "082 111 2233",
+      "email": "billing@apex.co.za",
+      "address": "12 Harbour Rd, Foreshore, Cape Town",
+      "notes": "Dispatch office PCs"
+    },
+    {
+      "id": "cli-2",
+      "name": "Beacon Architecture",
+      "contact": "Sarah Connor",
+      "phone": "083 222 3344",
+      "email": "accounts@beacon.co.za",
+      "address": "44 Long St, City Bowl, Cape Town",
+      "notes": "CAD workstations and plotters"
+    },
+    {
+      "id": "cli-3",
+      "name": "Crestview Dental Clinic",
+      "contact": "Dr. D. Ndlovu",
+      "phone": "084 333 4455",
+      "email": "admin@crestviewdental.co.za",
+      "address": "90 Main Rd, Claremont, Cape Town",
+      "notes": "Reception server and practice management"
+    },
+    {
+      "id": "cli-4",
+      "name": "Delta Marine Supplies",
+      "contact": "Mark Fisher",
+      "phone": "082 444 5566",
+      "email": "finance@deltamarine.co.za",
+      "address": "5 Pierhead, V&A Waterfront",
+      "notes": "Rugged laptop repairs"
+    },
+    {
+      "id": "cli-5",
+      "name": "Echo Creative Agency",
+      "contact": "Maya Lin",
+      "phone": "083 555 6677",
+      "email": "studio@echocreative.co.za",
+      "address": "18 Kloof St, Gardens, Cape Town",
+      "notes": "MacBook Pro display & logic board repairs"
+    },
+    {
+      "id": "cli-6",
+      "name": "Fairmont Accounting",
+      "contact": "Peter Fairmont",
+      "phone": "084 666 7788",
+      "email": "peter@fairmonttax.co.za",
+      "address": "77 Durban Rd, Bellville, Cape Town",
+      "notes": "Payroll backup and UPS maintenance"
+    }
+  ],
+  "documents": [
+    {
+      "id": "inv-001",
+      "type": "invoice",
+      "number": "INV-2026-001",
+      "clientId": "cli-1",
+      "jobCardId": "jc-004",
+      "quotationId": "quo-004",
+      "issueDate": "today-30",
+      "dueDate": "today-23",
+      "validUntil": null,
+      "reference": "Dell Latitude 5520 (SN: 88712)",
+      "scope": "SSD upgrade & OS reinstallation",
+      "workItems": [
+        { "title": "Diagnostic", "detail": "HDD reported SMART failing sectors" },
+        { "title": "Hardware Installation", "detail": "Replaced with 1TB NVMe Crucial P3 Plus" },
+        { "title": "OS Setup", "detail": "Cloned OS, updated drivers and security patches" }
+      ],
+      "lines": [
+        { "description": "1TB NVMe M.2 Solid State Drive", "qty": 1, "unitPriceCents": 165000 },
+        { "description": "Data clone, OS setup and diagnostics labour", "qty": 2, "unitPriceCents": 65000 }
+      ],
+      "depositCents": null,
+      "payments": [
+        { "id": "pay-001", "date": "today-20", "amountCents": 295000, "method": "EFT", "reference": "EFT-APEX-901" }
+      ],
+      "status": "paid",
+      "terms": "Payment due within 7 days of invoice date.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Old mechanical drive returned to client.",
+      "folderPath": "C:\\JobCard\\Clients\\Apex Logistics",
+      "createdAt": "today-30",
+      "updatedAt": "today-20"
+    },
+    {
+      "id": "inv-002",
+      "type": "invoice",
+      "number": "INV-2026-002",
+      "clientId": "cli-2",
+      "jobCardId": "jc-002",
+      "quotationId": null,
+      "issueDate": "today-10",
+      "dueDate": "today+4",
+      "validUntil": null,
+      "reference": "HP Z-Book Studio G7",
+      "scope": "Cooling fan replacement & thermal paste re-paste",
+      "workItems": [
+        { "title": "Thermal Service", "detail": "Replaced noisy GPU cooling fan and applied Noctua NT-H2 paste" }
+      ],
+      "lines": [
+        { "description": "HP OEM Replacement Dual Cooling Fan Assembly", "qty": 1, "unitPriceCents": 140000 },
+        { "description": "Precision thermal repaste & internal de-dusting", "qty": 1.5, "unitPriceCents": 65000 }
+      ],
+      "depositCents": null,
+      "payments": [
+        { "id": "pay-002", "date": "today-5", "amountCents": 100000, "method": "EFT", "reference": "BEACON-DEP" }
+      ],
+      "status": "partially_paid",
+      "terms": "Payment due within 14 days of invoice date.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Remaining balance due on completion of 14-day observation.",
+      "folderPath": "C:\\JobCard\\Clients\\Beacon Architecture",
+      "createdAt": "today-10",
+      "updatedAt": "today-5"
+    },
+    {
+      "id": "inv-003",
+      "type": "invoice",
+      "number": "INV-2026-003",
+      "clientId": "cli-3",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-2",
+      "dueDate": "today+5",
+      "validUntil": null,
+      "reference": "Synology DiskStation DS920+",
+      "scope": "RAID rebuild & offsite backup reconfiguration",
+      "workItems": [
+        { "title": "Drive Replacement", "detail": "Hot-swapped degraded Drive 2 with Seagate IronWolf 4TB" },
+        { "title": "Backup Verification", "detail": "Restored sample files from cloud backup to test integrity" }
+      ],
+      "lines": [
+        { "description": "Seagate IronWolf 4TB NAS Hard Drive", "qty": 1, "unitPriceCents": 240000 },
+        { "description": "NAS rebuild oversight and backup testing labour", "qty": 2, "unitPriceCents": 75000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "sent",
+      "terms": "Strictly 7 days from invoice date.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "RAID scrubbing scheduled for first Sunday of every month.",
+      "folderPath": "C:\\JobCard\\Clients\\Crestview Dental Clinic",
+      "createdAt": "today-2",
+      "updatedAt": "today-2"
+    },
+    {
+      "id": "inv-004",
+      "type": "invoice",
+      "number": "INV-2026-004",
+      "clientId": "cli-4",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-25",
+      "dueDate": "today-18",
+      "validUntil": null,
+      "reference": "Panasonic Toughbook CF-33",
+      "scope": "Rugged dock port repair & DC jack soldering",
+      "workItems": [
+        { "title": "Micro-soldering", "detail": "Resoldered broken DC barrel jack pin and tested under load" }
+      ],
+      "lines": [
+        { "description": "Rugged DC Input Harness & Jack", "qty": 1, "unitPriceCents": 85000 },
+        { "description": "Board-level micro-soldering labour", "qty": 2, "unitPriceCents": 75000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "overdue",
+      "terms": "7 days terms.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "First reminder sent today-10.",
+      "folderPath": "C:\\JobCard\\Clients\\Delta Marine Supplies",
+      "createdAt": "today-25",
+      "updatedAt": "today-10"
+    },
+    {
+      "id": "inv-005",
+      "type": "invoice",
+      "number": "INV-2026-005",
+      "clientId": "cli-5",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-55",
+      "dueDate": "today-48",
+      "validUntil": null,
+      "reference": "Apple MacBook Pro 16 2021 (M1 Pro)",
+      "scope": "Liquid damage clean & trackpad replacement",
+      "workItems": [
+        { "title": "Ultrasonic Cleaning", "detail": "Cleaned logic board corrosion in ultrasonic bath" },
+        { "title": "Trackpad Replacement", "detail": "Replaced corroded haptic force-touch trackpad" }
+      ],
+      "lines": [
+        { "description": "Original Force Touch Trackpad Assembly", "qty": 1, "unitPriceCents": 290000 },
+        { "description": "Ultrasonic board treatment & multi-point diagnostics", "qty": 3, "unitPriceCents": 75000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "overdue",
+      "terms": "7 days terms.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Second follow-up issued. Awaiting finance sign-off.",
+      "folderPath": "C:\\JobCard\\Clients\\Echo Creative Agency",
+      "createdAt": "today-55",
+      "updatedAt": "today-35"
+    },
+    {
+      "id": "inv-006",
+      "type": "invoice",
+      "number": "INV-2026-006",
+      "clientId": "cli-6",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-85",
+      "dueDate": "today-78",
+      "validUntil": null,
+      "reference": "APC Smart-UPS RT 3000VA",
+      "scope": "Battery replacement & runtime calibration",
+      "workItems": [
+        { "title": "Battery Pack Service", "detail": "Installed RBC44 battery replacement cartridge" }
+      ],
+      "lines": [
+        { "description": "APC RBC44 Compatible High-Rate Discharge Battery Pack", "qty": 1, "unitPriceCents": 480000 },
+        { "description": "On-site battery installation and load testing", "qty": 2, "unitPriceCents": 75000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "overdue",
+      "terms": "7 days terms.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Ageing 61-90 days bucket.",
+      "folderPath": "C:\\JobCard\\Clients\\Fairmont Accounting",
+      "createdAt": "today-85",
+      "updatedAt": "today-60"
+    },
+    {
+      "id": "inv-007",
+      "type": "invoice",
+      "number": "INV-2026-007",
+      "clientId": "cli-1",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-120",
+      "dueDate": "today-113",
+      "validUntil": null,
+      "reference": "Dell PowerEdge T340 Server",
+      "scope": "Emergency motherboard & redundant PSU swap",
+      "workItems": [
+        { "title": "Emergency Callout", "detail": "Overnight motherboard replacement to restore billing DB" }
+      ],
+      "lines": [
+        { "description": "Dell OEM System Board for T340", "qty": 1, "unitPriceCents": 950000 },
+        { "description": "Emergency after-hours server rebuild labour", "qty": 4, "unitPriceCents": 95000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "overdue",
+      "terms": "7 days terms.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Ageing 90+ days bucket. Final notice served.",
+      "folderPath": "C:\\JobCard\\Clients\\Apex Logistics",
+      "createdAt": "today-120",
+      "updatedAt": "today-90"
+    },
+    {
+      "id": "inv-draft-001",
+      "type": "invoice",
+      "number": null,
+      "clientId": "cli-3",
+      "jobCardId": "jc-003",
+      "quotationId": null,
+      "issueDate": null,
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "HP ProLiant ML30 Gen10",
+      "scope": "Scheduled RAM upgrade to 64GB ECC",
+      "workItems": [
+        { "title": "Memory installation", "detail": "Pending arrival of Kingston Server Premier DIMMs" }
+      ],
+      "lines": [
+        { "description": "Kingston 32GB DDR4-3200 ECC Unbuffered DIMM", "qty": 2, "unitPriceCents": 185000 },
+        { "description": "Installation, memtest86 24h burn-in verification", "qty": 1, "unitPriceCents": 65000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "draft",
+      "terms": "7 days terms.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Awaiting customer delivery confirmation.",
+      "folderPath": null,
+      "createdAt": "today-1",
+      "updatedAt": "today-1"
+    },
+    {
+      "id": "inv-008",
+      "type": "invoice",
+      "number": "INV-2026-008",
+      "clientId": "cli-4",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-40",
+      "dueDate": "today-33",
+      "validUntil": null,
+      "reference": "Garmin GPSMAP 8412 Chartplotter",
+      "scope": "Firmware recovery",
+      "workItems": [
+        { "title": "Inspection", "detail": "Unrepairable internal NAND corruption" }
+      ],
+      "lines": [
+        { "description": "Diagnostic fee (waived on BER decision)", "qty": 1, "unitPriceCents": 45000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "cancelled",
+      "terms": "Cancelled per agreement with client.",
+      "exclusions": "",
+      "turnaround": "",
+      "notes": "Unit declared beyond economical repair.",
+      "folderPath": null,
+      "createdAt": "today-40",
+      "updatedAt": "today-38"
+    },
+    {
+      "id": "quo-draft-001",
+      "type": "quotation",
+      "number": null,
+      "clientId": "cli-2",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": null,
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "Custom 3D Rendering Rig",
+      "scope": "Liquid cooling loop service & dual RTX 4090 GPU brackets",
+      "workItems": [
+        { "title": "Proposed Work", "detail": "Flush coolant, replace EK tubing, install anti-sag braces" }
+      ],
+      "lines": [
+        { "description": "EK-CryoFuel Clear 1000mL Premix Coolant", "qty": 2, "unitPriceCents": 38000 },
+        { "description": "Custom loop maintenance & leak-testing labour", "qty": 3, "unitPriceCents": 75000 }
+      ],
+      "depositCents": 150000,
+      "payments": [],
+      "status": "draft",
+      "terms": "Quotation valid for 14 days. 50% deposit required upon acceptance.",
+      "exclusions": "Pump failure covered under separate manufacturer warranty.",
+      "turnaround": "3 working days from parts delivery",
+      "notes": "Draft quote for review.",
+      "folderPath": null,
+      "createdAt": "today-2",
+      "updatedAt": "today-2"
+    },
+    {
+      "id": "quo-001",
+      "type": "quotation",
+      "number": "QUO-2026-001",
+      "clientId": "cli-5",
+      "jobCardId": "jc-001",
+      "quotationId": null,
+      "issueDate": "today-4",
+      "dueDate": null,
+      "validUntil": "today+10",
+      "reference": "Studio Mac Studio M2 Ultra",
+      "scope": "10GbE network interface testing & Thunderbolt SAN connectivity",
+      "workItems": [
+        { "title": "Scope", "detail": "Troubleshoot packet drops on 10G SFP+ connection to QNAP SAN" }
+      ],
+      "lines": [
+        { "description": "Cat6A 10Gbps Shielded Patch Cable 5m", "qty": 2, "unitPriceCents": 22000 },
+        { "description": "Network SAN throughput diagnostics and MTU tuning", "qty": 2, "unitPriceCents": 85000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "sent",
+      "terms": "Valid for 14 days.",
+      "exclusions": "Core switch hardware failures excluded.",
+      "turnaround": "1 day on-site",
+      "notes": "Sent to Maya Lin for approval.",
+      "folderPath": "C:\\JobCard\\Clients\\Echo Creative Agency",
+      "createdAt": "today-4",
+      "updatedAt": "today-4"
+    },
+    {
+      "id": "quo-002",
+      "type": "quotation",
+      "number": "QUO-2026-002",
+      "clientId": "cli-6",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-7",
+      "dueDate": null,
+      "validUntil": "today+7",
+      "reference": "Dell OptiPlex 7090 Micro Fleet (5 units)",
+      "scope": "RAM and NVMe refresh program",
+      "workItems": [
+        { "title": "Batch upgrade", "detail": "Upgrade 5 accounting desks from 8GB to 16GB RAM + 500GB SSD" }
+      ],
+      "lines": [
+        { "description": "Crucial 8GB DDR4-3200 SODIMM", "qty": 5, "unitPriceCents": 48000 },
+        { "description": "Crucial P3 500GB NVMe SSD", "qty": 5, "unitPriceCents": 82000 },
+        { "description": "Bulk installation and data migration labour", "qty": 5, "unitPriceCents": 45000 }
+      ],
+      "depositCents": 400000,
+      "payments": [],
+      "status": "accepted",
+      "terms": "Valid for 14 days. 50% deposit upon acceptance.",
+      "exclusions": "Software licensing costs excluded.",
+      "turnaround": "2 days per batch",
+      "notes": "Client accepted via email confirmation.",
+      "folderPath": "C:\\JobCard\\Clients\\Fairmont Accounting",
+      "createdAt": "today-7",
+      "updatedAt": "today-5"
+    },
+    {
+      "id": "quo-003",
+      "type": "quotation",
+      "number": "QUO-2026-003",
+      "clientId": "cli-4",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-25",
+      "dueDate": null,
+      "validUntil": "today-11",
+      "reference": "Iridium Extreme Satellite Phone",
+      "scope": "Antenna connection & housing seal replacement",
+      "workItems": [
+        { "title": "Marine overhaul", "detail": "IP67 gasket seal renewal and RF calibration" }
+      ],
+      "lines": [
+        { "description": "OEM Iridium IP67 Gasket & Seal Kit", "qty": 1, "unitPriceCents": 98000 },
+        { "description": "Antenna RF tuning & pressure test", "qty": 1.5, "unitPriceCents": 75000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "sent",
+      "terms": "Valid for 14 days.",
+      "exclusions": "Water damage prior to seal replacement.",
+      "turnaround": "5 working days",
+      "notes": "Quote expired without client response.",
+      "folderPath": null,
+      "createdAt": "today-25",
+      "updatedAt": "today-25"
+    },
+    {
+      "id": "quo-004",
+      "type": "quotation",
+      "number": "QUO-2026-004",
+      "clientId": "cli-1",
+      "jobCardId": "jc-004",
+      "quotationId": null,
+      "issueDate": "today-35",
+      "dueDate": null,
+      "validUntil": "today-21",
+      "reference": "Dell Latitude 5520 (SN: 88712)",
+      "scope": "SSD upgrade & OS reinstallation",
+      "workItems": [
+        { "title": "Upgrade proposal", "detail": "1TB NVMe Crucial SSD and cloning service" }
+      ],
+      "lines": [
+        { "description": "1TB NVMe M.2 Solid State Drive", "qty": 1, "unitPriceCents": 165000 },
+        { "description": "Data clone, OS setup and diagnostics labour", "qty": 2, "unitPriceCents": 65000 }
+      ],
+      "depositCents": null,
+      "payments": [],
+      "status": "converted",
+      "terms": "Payment due within 7 days of invoice date.",
+      "exclusions": "",
+      "turnaround": "1 day",
+      "notes": "Converted to invoice INV-2026-001.",
+      "folderPath": "C:\\JobCard\\Clients\\Apex Logistics",
+      "createdAt": "today-35",
+      "updatedAt": "today-30"
+    },
+    {
+      "id": "jc-001",
+      "type": "jobcard",
+      "number": "JC-2026-001",
+      "clientId": "cli-5",
+      "jobCardId": null,
+      "quotationId": "quo-001",
+      "issueDate": "today-4",
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "Studio Mac Studio M2 Ultra (SN: MAC-9912)",
+      "scope": "10GbE network interface testing & Thunderbolt SAN connectivity",
+      "workItems": [
+        { "title": "Intake", "detail": "Customer reports intermittent drops transferring 4K ProRes footage" },
+        { "title": "Testing", "detail": "Replaced cable; ran iperf3 test for 2 hours with 0 dropped packets" }
+      ],
+      "lines": [],
+      "depositCents": null,
+      "payments": [],
+      "status": "open",
+      "terms": "",
+      "exclusions": "",
+      "turnaround": "24 hours",
+      "notes": "Hardware checked in. Waiting for client quote sign-off.",
+      "folderPath": "C:\\JobCard\\Clients\\Echo Creative Agency",
+      "createdAt": "today-4",
+      "updatedAt": "today-4"
+    },
+    {
+      "id": "jc-002",
+      "type": "jobcard",
+      "number": "JC-2026-002",
+      "clientId": "cli-2",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-10",
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "HP Z-Book Studio G7 (SN: HP-4410)",
+      "scope": "Cooling fan replacement & thermal paste re-paste",
+      "workItems": [
+        { "title": "Intake", "detail": "Thermal throttling under Blender renders" },
+        { "title": "Disassembly", "detail": "Disassembled vapor chamber, cleaned heat fins" }
+      ],
+      "lines": [],
+      "depositCents": null,
+      "payments": [],
+      "status": "in_progress",
+      "terms": "",
+      "exclusions": "",
+      "turnaround": "2 days",
+      "notes": "Fans installed, currently stress-testing CPU/GPU thermals.",
+      "folderPath": "C:\\JobCard\\Clients\\Beacon Architecture",
+      "createdAt": "today-10",
+      "updatedAt": "today-5"
+    },
+    {
+      "id": "jc-003",
+      "type": "jobcard",
+      "number": "JC-2026-003",
+      "clientId": "cli-3",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-1",
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "HP ProLiant ML30 Gen10 (SN: SRV-0192)",
+      "scope": "Scheduled RAM upgrade to 64GB ECC",
+      "workItems": [
+        { "title": "Preparation", "detail": "Backed up dental database and stopped SQL service cleanly" }
+      ],
+      "lines": [],
+      "depositCents": null,
+      "payments": [],
+      "status": "completed",
+      "terms": "",
+      "exclusions": "",
+      "turnaround": "Same day",
+      "notes": "Memory upgrade physically completed and tested with memtest.",
+      "folderPath": null,
+      "createdAt": "today-1",
+      "updatedAt": "today-1"
+    },
+    {
+      "id": "jc-004",
+      "type": "jobcard",
+      "number": "JC-2026-004",
+      "clientId": "cli-1",
+      "jobCardId": null,
+      "quotationId": "quo-004",
+      "issueDate": "today-35",
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "Dell Latitude 5520 (SN: 88712)",
+      "scope": "SSD upgrade & OS reinstallation",
+      "workItems": [
+        { "title": "Work Completed", "detail": "SSD installed, Windows 11 restored, apps verified" }
+      ],
+      "lines": [],
+      "depositCents": null,
+      "payments": [],
+      "status": "invoiced",
+      "terms": "",
+      "exclusions": "",
+      "turnaround": "1 day",
+      "notes": "Invoiced as INV-2026-001.",
+      "folderPath": "C:\\JobCard\\Clients\\Apex Logistics",
+      "createdAt": "today-35",
+      "updatedAt": "today-30"
+    },
+    {
+      "id": "jc-005",
+      "type": "jobcard",
+      "number": "JC-2026-005",
+      "clientId": "cli-6",
+      "jobCardId": null,
+      "quotationId": null,
+      "issueDate": "today-90",
+      "dueDate": null,
+      "validUntil": null,
+      "reference": "Brother HL-L6400DW Printer",
+      "scope": "Paper feed roller kit & fuser cleaning",
+      "workItems": [
+        { "title": "Maintenance", "detail": "Replaced pickup rollers and cleaned paper dust" }
+      ],
+      "lines": [],
+      "depositCents": null,
+      "payments": [],
+      "status": "closed",
+      "terms": "",
+      "exclusions": "",
+      "turnaround": "Same day",
+      "notes": "Job completed, paid and closed.",
+      "folderPath": null,
+      "createdAt": "today-90",
+      "updatedAt": "today-80"
+    }
+  ]
+}
