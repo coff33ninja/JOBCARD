@@ -25,6 +25,8 @@ Optional body:
 |---|---|---|
 | 404 | `NOT_FOUND` | Document ID not found |
 | 409 | `ALREADY_ISSUED` | Document has already been issued |
+| 400 | `VALIDATION_FAILED` | Invoice or quotation has no line items, or `issueDate` is not `YYYY-MM-DD` |
+| 409 | `INVALID_STATE` | Document is cancelled |
 
 ## Rules and side effects
 - Assigns sequential formatted number (`JC-YYYY-NNN`, `QUO-YYYY-NNN`, `INV-YYYY-NNN`).

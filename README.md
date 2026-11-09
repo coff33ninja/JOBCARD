@@ -67,3 +67,28 @@ Complete endpoint documentation is maintained under `docs/api/`:
 3. **Sequential numbering resets:** Numbering resets annually based on the issue date year (`YYYY`).
 4. **Export fallbacks:** When `capabilities.pdf` is false, the export menu seamlessly falls back to print mode with instructions for the user to select "Save as PDF".
 5. **Spreadsheet register export:** `GET /register/export.xlsx` downloads the full documents register as an Excel-compatible file.
+
+## Go backend (`backend/`)
+
+One Go binary: HTTP API under `/api/v1` plus SQLite storage. It is built to pass `src/api/apiContract.test.ts` unchanged.
+
+```
+cd backend
+go build -o jobcard.exe ./cmd/jobcard
+.\jobcard.exe --seed ..\seed\seed.json          # development: sample data into an EMPTY database
+.\jobcard.exe --clients-dir "G:\My Drive\BUSINESS\Clients"   # real use: clean database, client folders on Drive
+```
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--addr` | `127.0.0.1:8080` | Listen address. Keep it on localhost, there is no authentication. |
+| `--data-dir` | `%APPDATA%\JobCard` | Database folder (`jobcard.sqlite`), per user. |
+| `--clients-dir` | `<data-dir>\Clients` | Client folders and exported docx/pdf copies. |
+| `--seed` | none | Development only. Loads `seed/seed.json`, and only into an empty database. |
+| `--today` | system date | Fixed date for testing. |
+| `--static` | none | Serve a built UI (`dist`) at `/`. |
+
+Run the UI against it: `VITE_API=http VITE_API_URL=http://127.0.0.1:8080 npm run dev`.
+Verify the backend: start it with `--seed`, then `VITE_API_URL=http://127.0.0.1:8080 npm run test:ci`. Go unit tests: `cd backend && go test ./...`.
+
+Exports: DOCX is generated in Go. PDF is made by converting that DOCX with headless Microsoft Word, so `capabilities.pdf` is true only where Word is installed. Each export also saves a copy into the client folder.

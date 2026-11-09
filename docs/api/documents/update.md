@@ -30,6 +30,8 @@ Body: Partial document fields (client, lines, work items, terms, notes).
 - Recalculates subtotal, tax, and total.
 - Rejects edits if document has already been issued.
 
+Money is server-authoritative: line totals, subtotal, tax and total are recomputed on every save (see create). Fields omitted from the body keep their value; send `null` to clear `jobCardId`, `quotationId` or `depositCents`.
+
 ## Example
 Request: `PUT /api/v1/documents/doc-draft-1`
 ```json

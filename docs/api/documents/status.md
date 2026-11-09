@@ -29,6 +29,8 @@ Body:
 ## Rules and side effects
 Updates the document status.
 
+Allowed transitions (from the stored status): invoice `draft`/`sent`/`overdue` to `cancelled` (not when payments exist); quotation `draft` to `cancelled`, `sent` to `accepted`/`declined`/`cancelled`, `accepted` to `cancelled`; job card `open` to `in_progress`, `in_progress` to `completed`/`open`, `completed` to `invoiced`/`closed`/`in_progress`, `invoiced` to `closed`, `closed` to `open`. `partially_paid`, `paid` and `converted` are never set directly: payments and conversion set them.
+
 ## Example
 Request: `POST /api/v1/documents/doc-1/status`
 ```json

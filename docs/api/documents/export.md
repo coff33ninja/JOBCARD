@@ -33,6 +33,8 @@ Query parameter:
 - Generates file rendered from document data and business templates.
 - Backend saves a copy directly to the client's folder on disk.
 
+The saved copy is named `<Invoice|Quotation|JobCard>_<number>_<Client_Name>.<ext>` in the client folder and is overwritten on re-export. PDF is made by converting the generated DOCX with headless Microsoft Word; without Word, `capabilities.pdf` is false and `format=pdf` returns 501.
+
 ## Example
 Request: `POST /api/v1/documents/doc-1/export?format=pdf`
 

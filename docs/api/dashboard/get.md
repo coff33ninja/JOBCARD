@@ -26,6 +26,8 @@ Query parameter:
 ## Rules and side effects
 Read-only metrics calculation aggregated from SQLite records.
 
+`attention.followUpsDue` counts overdue unpaid invoices, because the contract has no follow-up date field. Totals count invoices by issue year and exclude drafts and cancelled invoices.
+
 ## Example
 Request: `GET /api/v1/dashboard?year=2026`
 

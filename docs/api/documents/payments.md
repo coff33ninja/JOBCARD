@@ -29,6 +29,7 @@ Body:
 | 400 | `VALIDATION_FAILED` | Missing payment date or amount |
 | 404 | `NOT_FOUND` | Document not found |
 | 422 | `OVERPAYMENT_REJECTED` | Payment amount exceeds remaining balance |
+| 409 | `INVALID_STATE` | Invoice is not issued yet, or is cancelled |
 
 ## Rules and side effects
 - Appends payment to document payments list.

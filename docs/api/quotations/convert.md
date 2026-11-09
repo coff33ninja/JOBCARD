@@ -24,6 +24,7 @@ Body: empty.
 |---|---|---|
 | 404 | `NOT_FOUND` | Quotation ID not found |
 | 409 | `INVALID_STATE` | Document is not a quotation or already converted |
+| 409 | `INVALID_STATE` | Not a quotation, still a draft, declined, cancelled, or already converted |
 
 ## Rules and side effects
 - Copies client ID, reference, scope, work items, and line items into a new draft invoice (`number: null`, `status: "draft"`).

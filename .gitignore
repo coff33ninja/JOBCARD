@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Go backend
+backend/jobcard.exe
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
