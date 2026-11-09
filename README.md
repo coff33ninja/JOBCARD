@@ -92,3 +92,17 @@ Run the UI against it: `VITE_API=http VITE_API_URL=http://127.0.0.1:8080 npm run
 Verify the backend: start it with `--seed`, then `VITE_API_URL=http://127.0.0.1:8080 npm run test:ci`. Go unit tests: `cd backend && go test ./...`.
 
 Exports: DOCX is generated in Go. PDF is made by converting that DOCX with headless Microsoft Word, so `capabilities.pdf` is true only where Word is installed. Each export also saves a copy into the client folder.
+
+## Templates, MCP and security
+
+**Templates.** Exports are filled from editable Word templates: `invoice.docx`, `quotation.docx`, `jobcard.docx` in `--templates-dir` (default `<data-dir>\Templates`, e.g. `--templates-dir "G:\My Drive\BUSINESS\Templates"`). Missing files are created from the built-in layout, existing files are never overwritten, and a `README.txt` next to them lists every `{{placeholder}}`. Open a template in Word, change fonts/colours/logo/wording, keep the placeholders. A table row containing `{{line.*}}` repeats per line item; a paragraph with `{{item.text}}` repeats per work item. Placeholders split across runs by Word are handled. To reset a layout, delete the file. An unrecognised placeholder stays visible in the output and is logged.
+
+**MCP.** `jobcard.exe --mcp` runs the MCP server for Claude Desktop. See `docs/mcp.md` for the config snippet, the tool list, and the safety rules (drafts first, `confirm=true` for permanent steps, no settings access, audit log).
+
+**Security.** The API has no login by default and refuses to leave localhost: it only accepts `localhost`/`127.0.0.1` Host headers (DNS rebinding), rejects cross-site `Origin`s (browser CSRF), and requires `application/json` bodies. To listen on another address you must set `--token` (or `JOBCARD_TOKEN`); every `/api/` request then needs `Authorization: Bearer <token>`, and the UI sends it when built with `VITE_API_TOKEN`. MCP runs as your own local process and needs no token.
+
+| Extra flag | Default | Purpose |
+|---|---|---|
+| `--templates-dir` | `<data-dir>\Templates` | Editable `.docx` templates |
+| `--token` | none (or `JOBCARD_TOKEN`) | Bearer token; mandatory when `--addr` is not localhost |
+| `--mcp` | off | Run as an MCP server on stdio instead of HTTP |

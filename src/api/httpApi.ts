@@ -142,8 +142,10 @@ const DashboardSummarySchema = z.object({
 
 export class HttpApi implements ApiClient {
   private baseUrl: string;
+  private token: string;
 
-  constructor(baseUrl: string = '') {
+  constructor(baseUrl: string = '', token: string = '') {
+    this.token = token;
     // Normalise base url to remove trailing slash
     const base = baseUrl ? baseUrl.replace(/\/$/, '') : '';
     this.baseUrl = `${base}/api/v1`;
@@ -158,6 +160,7 @@ export class HttpApi implements ApiClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       ...((options.headers as Record<string, string>) || {}),
     };
 
@@ -260,7 +263,7 @@ export class HttpApi implements ApiClient {
 
   async exportDocument(id: string, format: 'docx' | 'pdf'): Promise<Blob> {
     const url = `${this.baseUrl}/documents/${id}/export?format=${format}`;
-    const res = await fetch(url, { method: 'POST' });
+    const res = await fetch(url, { method: 'POST', headers: this.token ? { Authorization: `Bearer ${this.token}` } : {} });
     if (!res.ok) {
       let code = 'EXPORT_FAILED';
       let message = 'Export failed';
@@ -306,7 +309,7 @@ export class HttpApi implements ApiClient {
 
   async exportRegisterSpreadsheet(): Promise<Blob> {
     const url = `${this.baseUrl}/register/export.xlsx`;
-    const res = await fetch(url, { method: 'GET' });
+    const res = await fetch(url, { method: 'GET', headers: this.token ? { Authorization: `Bearer ${this.token}` } : {} });
     if (!res.ok) {
       throw new ApiError(res.status, 'EXPORT_FAILED', 'Failed to export register spreadsheet');
     }

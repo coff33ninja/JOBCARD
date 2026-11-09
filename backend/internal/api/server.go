@@ -15,13 +15,18 @@ import (
 	"strings"
 
 	"jobcard/internal/core"
-	"jobcard/internal/domain"
 	"jobcard/internal/export"
 )
 
 type Server struct {
-	Svc    *core.Service
-	Static string // optional: directory with the built UI (dist)
+	Svc       *core.Service
+	Templates export.Templates // editable .docx layouts
+	Static    string           // optional: directory with the built UI (dist)
+
+	// Loopback is true when the listener is bound to localhost only (enables the Host check).
+	Loopback bool
+	// Token, when set, is required as "Authorization: Bearer <token>" on every /api/ request.
+	Token string
 }
 
 func (s *Server) Handler() http.Handler {
@@ -52,7 +57,7 @@ func (s *Server) Handler() http.Handler {
 	if s.Static != "" {
 		mux.HandleFunc("/", s.static)
 	}
-	return cors(mux)
+	return s.secure(cors(s.auditWrites(mux)))
 }
 
 // ---------- helpers ----------
@@ -101,7 +106,7 @@ func cors(next http.Handler) http.Handler {
 					w.Header().Set("Access-Control-Allow-Origin", o)
 					w.Header().Set("Vary", "Origin")
 					w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
 					w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, X-Saved-Path")
 				}
 			}
@@ -279,114 +284,23 @@ func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
 
 // ---------- export / reveal ----------
 
-func (s *Server) exportCtx(d domain.Doc) (export.Ctx, error) {
-	cl, err := s.Svc.GetClient(d.ClientID)
-	if err != nil {
-		return export.Ctx{}, err
-	}
-	st, err := s.Svc.GetSettings()
-	if err != nil {
-		return export.Ctx{}, err
-	}
-	c := export.Ctx{Doc: d, Client: cl, Settings: st, Today: s.Svc.Today()}
-	all, err := s.Svc.AllDocuments()
-	if err != nil {
-		return c, err
-	}
-	for _, o := range all {
-		if o.Number == nil {
-			continue
-		}
-		if d.QuotationID != nil && o.ID == *d.QuotationID {
-			c.QuotationNumber = *o.Number
-		}
-		if d.JobCardID != nil && o.ID == *d.JobCardID {
-			c.JobCardNumber = *o.Number
-		}
-		if d.Type == "jobcard" && o.JobCardID != nil && *o.JobCardID == d.ID {
-			c.Related = append(c.Related, *o.Number)
-		}
-	}
-	return c, nil
-}
-
-var filePrefix = map[string]string{"invoice": "Invoice", "quotation": "Quotation", "jobcard": "JobCard"}
-
 func (s *Server) exportDoc(w http.ResponseWriter, r *http.Request) {
-	d, err := s.Svc.GetDocument(r.PathValue("id"))
+	res, err := s.Svc.ExportDocument(r.PathValue("id"), r.URL.Query().Get("format"), s.Templates)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	if d.Number == nil {
-		writeErr(w, &core.AppError{Status: 400, Code: "DRAFT_CANNOT_EXPORT", Message: "Drafts cannot be exported. Only issued documents can be exported."})
-		return
-	}
-	format := r.URL.Query().Get("format")
-	if format != "pdf" && format != "docx" {
-		writeErr(w, &core.AppError{Status: 400, Code: "VALIDATION_FAILED", Message: "format must be pdf or docx", Fields: map[string]string{"format": "Must be pdf or docx"}})
-		return
-	}
-	if format == "pdf" && !export.DetectCapabilities().PDF {
-		writeErr(w, &core.AppError{Status: 501, Code: "FORMAT_NOT_SUPPORTED", Message: "PDF export needs Microsoft Word on the host machine"})
-		return
-	}
-	ctx, err := s.exportCtx(d)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	data, err := export.BuildDocx(ctx)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	mime := "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	if format == "pdf" {
-		if data, err = export.DocxToPDF(data); err != nil {
-			log.Printf("pdf export failed: %v", err)
-			writeErr(w, &core.AppError{Status: 500, Code: "EXPORT_FAILED", Message: "PDF conversion failed"})
-			return
-		}
-		mime = "application/pdf"
-	}
-	folder, err := s.Svc.EnsureClientFolder(d.ClientID)
-	if err != nil {
-		log.Printf("client folder: %v", err)
-		writeErr(w, &core.AppError{Status: 500, Code: "EXPORT_FAILED", Message: "Could not create the client folder"})
-		return
-	}
-	saved := filepath.Join(folder, fmt.Sprintf("%s_%s_%s.%s", filePrefix[d.Type], *d.Number, strings.ReplaceAll(core.SafeName(ctx.Client.Name), " ", "_"), format))
-	if err := os.WriteFile(saved, data, 0o644); err != nil {
-		log.Printf("save copy: %v", err)
-		writeErr(w, &core.AppError{Status: 500, Code: "EXPORT_FAILED", Message: "Could not save a copy to the client folder"})
-		return
-	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.%s"`, *d.Number, format))
-	w.Header().Set("X-Saved-Path", saved)
+	w.Header().Set("Content-Type", res.Mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, res.Filename))
+	w.Header().Set("X-Saved-Path", res.SavedPath)
 	w.WriteHeader(200)
-	_, _ = w.Write(data)
+	_, _ = w.Write(res.Data)
 }
 
 func (s *Server) reveal(w http.ResponseWriter, r *http.Request) {
-	d, err := s.Svc.GetDocument(r.PathValue("id"))
+	folder, err := s.Svc.RevealFolder(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err)
-		return
-	}
-	if !export.DetectCapabilities().RevealInFolder {
-		writeErr(w, &core.AppError{Status: 501, Code: "NOT_SUPPORTED", Message: "Reveal in folder is not supported on this machine"})
-		return
-	}
-	folder, err := s.Svc.EnsureClientFolder(d.ClientID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if err := export.Reveal(folder); err != nil {
-		log.Printf("reveal: %v", err)
-		writeErr(w, &core.AppError{Status: 500, Code: "INTERNAL_ERROR", Message: "Could not open the folder"})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "path": folder})
@@ -440,25 +354,36 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) registerXLSX(w http.ResponseWriter, r *http.Request) {
-	docs, err := s.Svc.AllDocuments()
+	data, name, err := s.Svc.RegisterSpreadsheet()
 	if err != nil {
 		writeErr(w, err)
-		return
-	}
-	clients, err := s.Svc.ListClients()
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	today := s.Svc.Today()
-	data, err := export.RegisterXLSX(docs, clients, today)
-	if err != nil {
-		log.Printf("register xlsx: %v", err)
-		writeErr(w, &core.AppError{Status: 500, Code: "INTERNAL_ERROR", Message: "Spreadsheet generation failed"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="register-%s.xlsx"`, today[:4]))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 	w.WriteHeader(200)
 	_, _ = w.Write(data)
+}
+
+// auditWrites records every state-changing API call (method, path, status). Bodies are not stored.
+func (s *Server) auditWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method != http.MethodPost && r.Method != http.MethodPut) || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(rec, r)
+		s.Svc.Audit("api", r.Method+" "+r.URL.Path, "", fmt.Sprintf("status %d", rec.status))
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
 }

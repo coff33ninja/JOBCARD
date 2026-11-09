@@ -250,5 +250,5 @@ runApiContractSuite('MockApi', () => {
 // 2. Run against HttpApi if VITE_API_URL or API_URL is set in environment
 if (process.env.VITE_API_URL || process.env.API_URL) {
   const url = process.env.VITE_API_URL || process.env.API_URL;
-  runApiContractSuite('HttpApi', () => new HttpApi(url));
+  runApiContractSuite('HttpApi', () => new HttpApi(url, process.env.VITE_API_TOKEN || ''));
 }

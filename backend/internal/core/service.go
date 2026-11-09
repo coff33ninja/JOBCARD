@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS payments(
   date TEXT NOT NULL, amount_cents INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_payments_doc ON payments(document_id);
 CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS audit_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, source TEXT NOT NULL,
+  action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '');
 `
 
 func NewService(dataDir, clientsDir string, today func() string) (*Service, error) {
@@ -119,7 +122,7 @@ func NewService(dataDir, clientsDir string, today func() string) (*Service, erro
 		return nil, err
 	}
 	dbPath := filepath.Join(dataDir, "jobcard.sqlite")
-	dsn := "file:" + filepath.ToSlash(dbPath) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	dsn := "file:" + filepath.ToSlash(dbPath) + "?_txlock=immediate&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

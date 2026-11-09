@@ -11,7 +11,8 @@ export function createApiClient(mode?: 'mock' | 'http', apiUrl?: string): ApiCli
   const selectedUrl = apiUrl || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
 
   if (selectedMode === 'http') {
-    return new HttpApi(selectedUrl);
+    const selectedToken = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_TOKEN) || '';
+    return new HttpApi(selectedUrl, selectedToken);
   }
 
   return new MockApi(rawSeedData as unknown as RawSeedData);

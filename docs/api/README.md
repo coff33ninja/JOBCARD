@@ -37,3 +37,7 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 - [GET /storage](storage/get.md) — Read-only data storage directory paths
 - [GET /capabilities](capabilities/get.md) — Export engine capabilities
 - [GET /register/export.xlsx](register/export.md) — Download register spreadsheet
+
+## Security
+
+The server accepts only localhost `Host` headers and local or same-origin `Origin`s (403 `FORBIDDEN_HOST` / `FORBIDDEN_ORIGIN`), requires `application/json` for request bodies (415 `UNSUPPORTED_MEDIA_TYPE`), and, when started with `--token`, requires `Authorization: Bearer <token>` on every `/api/` request (401 `UNAUTHORIZED`). The UI client sends the token when built with `VITE_API_TOKEN`.
