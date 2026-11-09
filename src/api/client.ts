@@ -65,6 +65,7 @@ export interface ApiClient {
   issueDocument(id: string, issueDate?: ISODate): Promise<Doc>;
   addPayment(id: string, input: AddPaymentInput): Promise<Doc>;
   updateStatus(id: string, status: string): Promise<Doc>;
+  setFollowUp(id: string, followUpDate: ISODate | null): Promise<Doc>;
   convertQuotation(id: string): Promise<Doc>;
   exportDocument(id: string, format: 'docx' | 'pdf'): Promise<Blob>;
   revealFolder(id: string): Promise<{ success: boolean; path: string }>;

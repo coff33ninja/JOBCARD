@@ -227,6 +227,62 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     assert.ok(blob.size > 0);
   });
 
+  test(`[${name}] Follow-up date: rules, set, clear and dashboard count`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+    const dueCount = async () => (await api.getDashboard()).attention.followUpsDue;
+    const before = await dueCount();
+    const expectError = (status: number, code: string) => (err: unknown) => {
+      const apiErr = err as ApiError;
+      assert.equal(apiErr.status, status);
+      assert.equal(apiErr.code, code);
+      return true;
+    };
+
+    const draft = await api.createDraft({
+      type: 'invoice',
+      clientId: clients[0].id,
+      reference: 'Follow-up Test',
+      lines: [{ description: 'Service', qty: 1, unitPriceCents: 50000, totalCents: 50000 }],
+    });
+    assert.equal(draft.followUpDate, null);
+
+    // only issued invoices can carry a follow-up
+    await assert.rejects(() => api.setFollowUp(draft.id, '2000-01-01'), expectError(409, 'INVALID_STATE'));
+    const issued = await api.issueDocument(draft.id, '2026-11-08');
+    assert.equal(issued.followUpDate, null);
+    await assert.rejects(() => api.setFollowUp(issued.id, '08/11/2026'), expectError(400, 'VALIDATION_FAILED'));
+    await assert.rejects(() => api.setFollowUp('missing-id', '2000-01-01'), expectError(404, 'NOT_FOUND'));
+
+    // a past follow-up date on an unpaid invoice is due now
+    const set = await api.setFollowUp(issued.id, '2000-01-01');
+    assert.equal(set.followUpDate, '2000-01-01');
+    assert.equal(await dueCount(), before + 1);
+
+    // a future one is not due yet
+    await api.setFollowUp(issued.id, '2999-01-01');
+    assert.equal(await dueCount(), before);
+
+    // paying in full removes it from the due list even if the date has passed
+    await api.setFollowUp(issued.id, '2000-01-01');
+    assert.equal(await dueCount(), before + 1);
+    await api.addPayment(issued.id, { date: '2026-11-08', amountCents: 50000, method: 'EFT' });
+    assert.equal(await dueCount(), before);
+
+    // null clears it
+    const cleared = await api.setFollowUp(issued.id, null);
+    assert.equal(cleared.followUpDate, null);
+    assert.equal((await api.getDocument(issued.id)).followUpDate, null);
+
+    // quotations and job cards do not take follow-ups
+    const quote = await api.createDraft({
+      type: 'quotation',
+      clientId: clients[0].id,
+      reference: 'Follow-up Quote',
+      lines: [{ description: 'Quote', qty: 1, unitPriceCents: 1000, totalCents: 1000 }],
+    });
+    await assert.rejects(() => api.setFollowUp(quote.id, '2000-01-01'), expectError(400, 'INVALID_DOCUMENT_TYPE'));
+  });
   test(`[${name}] Settings and Dashboard queries`, async () => {
     const api = createClient();
     const settings = await api.getSettings();

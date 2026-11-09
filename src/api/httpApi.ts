@@ -58,6 +58,7 @@ const DocSchema = z.object({
   issueDate: z.string().nullable(),
   dueDate: z.string().nullable(),
   validUntil: z.string().nullable(),
+  followUpDate: z.string().nullable(),
   reference: z.string(),
   scope: z.string(),
   workItems: z.array(WorkItemSchema),
@@ -252,6 +253,13 @@ export class HttpApi implements ApiClient {
     return this.request(`/documents/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status }),
+    }, DocSchema);
+  }
+
+  async setFollowUp(id: string, followUpDate: ISODate | null): Promise<Doc> {
+    return this.request(`/documents/${id}/follow-up`, {
+      method: 'POST',
+      body: JSON.stringify({ followUpDate }),
     }, DocSchema);
   }
 

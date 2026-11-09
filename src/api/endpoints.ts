@@ -90,6 +90,14 @@ export const ENDPOINTS: EndpointDefinition[] = [
   },
   {
     method: 'POST',
+    path: '/documents/:id/follow-up',
+    clientMethod: 'setFollowUp',
+    mcpTool: 'set_follow_up',
+    doc: 'docs/api/documents/follow-up.md',
+    summary: 'Set or clear the payment follow-up date of an issued invoice',
+  },
+  {
+    method: 'POST',
     path: '/quotations/:id/convert',
     clientMethod: 'convertQuotation',
     mcpTool: 'convert_quotation',

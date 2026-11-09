@@ -43,6 +43,7 @@ export interface Doc {
   issueDate: ISODate | null;
   dueDate: ISODate | null;
   validUntil: ISODate | null;
+  followUpDate: ISODate | null; // invoices: reminder date to chase payment, null when unset
   reference: string; // device / serial / job reference text
   scope: string;
   workItems: WorkItem[]; // completed or proposed work

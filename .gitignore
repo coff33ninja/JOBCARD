@@ -12,3 +12,7 @@ backend/jobcard.exe
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

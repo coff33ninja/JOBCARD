@@ -181,6 +181,7 @@ export class MockApi implements ApiClient {
       issueDate: null,
       dueDate: null,
       validUntil: null,
+      followUpDate: null,
       reference: input.reference.trim(),
       scope: input.scope?.trim() || '',
       workItems: input.workItems || [],
@@ -355,6 +356,26 @@ export class MockApi implements ApiClient {
     return JSON.parse(JSON.stringify(updated));
   }
 
+  async setFollowUp(id: string, followUpDate: ISODate | null): Promise<Doc> {
+    const idx = this.documents.findIndex((d) => d.id === id);
+    if (idx === -1) {
+      throw new ApiError(404, 'NOT_FOUND', `Document ${id} not found`);
+    }
+    const doc = this.documents[idx];
+    if (doc.type !== 'invoice') {
+      throw new ApiError(400, 'INVALID_DOCUMENT_TYPE', 'Follow-up dates apply to invoices only');
+    }
+    if (followUpDate !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(followUpDate) || Number.isNaN(parseISODate(followUpDate).getTime()))) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'followUpDate must be YYYY-MM-DD or null');
+    }
+    if (!doc.number || doc.status === 'cancelled') {
+      throw new ApiError(409, 'INVALID_STATE', 'Follow-up dates can only be set on issued, non-cancelled invoices');
+    }
+    const updated: Doc = { ...doc, followUpDate, updatedAt: new Date().toISOString() };
+    this.documents[idx] = updated;
+    return JSON.parse(JSON.stringify(updated));
+  }
+
   async convertQuotation(id: string): Promise<Doc> {
     const idx = this.documents.findIndex((d) => d.id === id);
     if (idx === -1) {
@@ -487,6 +508,10 @@ export class MockApi implements ApiClient {
         } else {
           ageing.d90plus += invBalance;
         }
+      }
+
+      // Follow-ups: reminder date reached on an unpaid invoice
+      if (inv.followUpDate && invBalance > 0 && inv.followUpDate <= this.today) {
         followUpsDue += 1;
       }
 
