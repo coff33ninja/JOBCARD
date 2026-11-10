@@ -40,6 +40,7 @@ Body:
 ## Rules and side effects
 - Document is saved with `number: null` and `status: "draft"`.
 - Calculates subtotal, tax, and total based on provided lines and settings tax rate.
+- When using `newClient`, check for existing clients with [POST /clients/check-duplicates](../clients/check-duplicates.md) first; this warns about possible matches but does not block creation.
 
 Money is server-authoritative: each line `totalCents` is recomputed as round(qty x unitPriceCents) and any supplied total is ignored; tax is calculated from the current `taxRate` setting. `jobCardId` and `quotationId`, when given, must reference an existing job card or quotation.
 

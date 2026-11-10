@@ -390,6 +390,12 @@ type ClientInput struct {
 	Notes   Opt[string] `json:"notes"`
 }
 
+type ClientDuplicateMatch struct {
+	Client   domain.Client `json:"client"`
+	Archived bool          `json:"archived"`
+	Reasons  []string      `json:"reasons"`
+}
+
 func (s *Service) ListClients() ([]domain.Client, error) {
 	return s.listClients(false)
 }
@@ -444,6 +450,87 @@ func getActiveClient(q queryer, id string) (domain.Client, error) {
 
 func (s *Service) CreateClient(in ClientInput) (domain.Client, error) {
 	return createClient(s.DB, in)
+}
+
+func (s *Service) FindPotentialDuplicateClients(in ClientInput) ([]ClientDuplicateMatch, error) {
+	if strings.TrimSpace(in.Name.Or("")) == "" {
+		return nil, invalid("Client name is required", map[string]string{"name": "Name is required"})
+	}
+	rows, err := s.DB.Query(`SELECT id,name,contact,phone,email,address,notes,archived_at FROM clients ORDER BY name COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	matches := []ClientDuplicateMatch{}
+	for rows.Next() {
+		var client domain.Client
+		var archivedAt sql.NullString
+		if err := rows.Scan(&client.ID, &client.Name, &client.Contact, &client.Phone, &client.Email,
+			&client.Address, &client.Notes, &archivedAt); err != nil {
+			return nil, err
+		}
+		reasons := clientDuplicateReasons(in, client)
+		if len(reasons) > 0 {
+			matches = append(matches, ClientDuplicateMatch{
+				Client: client, Archived: archivedAt.Valid, Reasons: reasons,
+			})
+		}
+	}
+	return matches, rows.Err()
+}
+
+func clientDuplicateReasons(in ClientInput, existing domain.Client) []string {
+	inputNames := []string{in.Name.Or(""), in.Contact.Or("")}
+	existingNames := []string{existing.Name, existing.Contact}
+	nameMatch := false
+	for _, inputName := range inputNames {
+		normalizedInput := normalizeClientName(inputName)
+		if normalizedInput == "" {
+			continue
+		}
+		for _, existingName := range existingNames {
+			if normalizedInput == normalizeClientName(existingName) {
+				nameMatch = true
+				break
+			}
+		}
+		if nameMatch {
+			break
+		}
+	}
+
+	var reasons []string
+	if nameMatch {
+		reasons = append(reasons, "name/contact")
+	}
+	if phone := normalizeClientPhone(in.Phone.Or("")); phone != "" &&
+		phone == normalizeClientPhone(existing.Phone) {
+		reasons = append(reasons, "phone")
+	}
+	if email := normalizeClientEmail(in.Email.Or("")); email != "" &&
+		email == normalizeClientEmail(existing.Email) {
+		reasons = append(reasons, "email")
+	}
+	return reasons
+}
+
+func normalizeClientName(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(value)), " ")
+}
+
+func normalizeClientPhone(value string) string {
+	var digits strings.Builder
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	return digits.String()
+}
+
+func normalizeClientEmail(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func createClient(q queryer, in ClientInput) (domain.Client, error) {
@@ -1200,20 +1287,35 @@ func (s *Service) SetFollowUpDate(id string, followUpDate *string) (domain.Doc, 
 
 func nextNumber(q queryer, docType string, year int) (string, error) {
 	prefix := fmt.Sprintf("%s-%d-", domain.Prefix(docType), year)
-	rows, err := q.Query(`SELECT number FROM documents WHERE type=? AND number LIKE ?`, docType, prefix+"%")
+	rows, err := q.Query(`SELECT id,type,number,status,archived_at FROM documents WHERE type=? AND number LIKE ? AND archived_at IS NULL AND status != 'cancelled'`, docType, prefix+"%")
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
 	var docs []domain.Doc
 	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
+		var d domain.Doc
+		var n, archivedAt sql.NullString
+		if err := rows.Scan(&d.ID, &d.Type, &n, &d.Status, &archivedAt); err != nil {
 			return "", err
 		}
-		docs = append(docs, domain.Doc{Type: docType, Number: &n})
+		d.Number = strPtr(n)
+		d.ArchivedAt = strPtr(archivedAt)
+		docs = append(docs, d)
 	}
 	return domain.NextNumber(docs, docType, year), rows.Err()
+}
+
+func numberAlreadyAssigned(docs []domain.Doc, docType, number, excludeID string) bool {
+	for _, d := range docs {
+		if d.ID == excludeID || d.Type != docType || d.Number == nil || *d.Number != number {
+			continue
+		}
+		if d.ArchivedAt == nil && d.Status != "cancelled" {
+			return true
+		}
+	}
+	return false
 }
 
 // IssueDocument assigns the next number (per type and year), sets dates and moves draft -> sent/open.
@@ -1261,6 +1363,13 @@ func (s *Service) IssueDocument(id, issueDate string) (domain.Doc, error) {
 	num, err := nextNumber(tx, d.Type, t.Year())
 	if err != nil {
 		return d, err
+	}
+	activeDocs, err := s.queryDocs(tx, `WHERE type=? AND archived_at IS NULL AND status != 'cancelled'`, d.Type)
+	if err != nil {
+		return d, err
+	}
+	if numberAlreadyAssigned(activeDocs, d.Type, num, d.ID) {
+		return d, appErr(http.StatusConflict, "NUMBER_ALREADY_ASSIGNED", fmt.Sprintf("%s %s is already active for this document type", domain.Prefix(d.Type), num))
 	}
 	d.Number, d.IssueDate = &num, &issueDate
 	if strings.TrimSpace(d.Authorization.TechnicianSignature) == "" {

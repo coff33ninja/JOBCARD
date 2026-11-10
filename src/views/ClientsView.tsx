@@ -368,6 +368,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <ClientModal
         key={`${isModalOpen ? 'open' : 'closed'}-${clientToEdit?.id ?? 'new'}`}
         isOpen={isModalOpen}
+        findDuplicates={(input) => api.findPotentialDuplicateClients(input)}
         onClose={() => setIsModalOpen(false)}
         client={clientToEdit}
         onSubmit={async (input) => {

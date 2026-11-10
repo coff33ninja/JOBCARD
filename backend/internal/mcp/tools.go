@@ -138,7 +138,15 @@ func (s *Server) tools() []tool {
 			Run: func(_ json.RawMessage) (any, error) { return svc.ListClients() }},
 		{Name: "list_archived_clients", Description: "List archived clients, including those with existing documents.", Schema: obj(map[string]any{}),
 			Run: func(_ json.RawMessage) (any, error) { return svc.ListArchivedClients() }},
-		{Name: "create_client", Description: "Create a client. Only name is required.", Write: true,
+		{Name: "find_duplicate_clients", Description: "Check active and archived clients for exact name/contact, phone or email matches. Call before create_client or create_draft with newClient and tell the user about possible matches. This is warning-only; duplicates may still be created when intended.", Schema: obj(clientProps(), "name"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in core.ClientInput
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				return svc.FindPotentialDuplicateClients(in)
+			}},
+		{Name: "create_client", Description: "Create a client. Before creation, call find_duplicate_clients and surface any possible matches to the user. Only name is required.", Write: true,
 			Schema: obj(clientProps(), "name"),
 			Run: func(a json.RawMessage) (any, error) {
 				var in core.ClientInput
@@ -218,7 +226,7 @@ func (s *Server) tools() []tool {
 				}
 				return svc.GetDocument(id.ID)
 			}},
-		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card. Supply either an existing clientId or newClient details to create and link a client in the same operation. Drafts have no number yet and can be edited.", Write: true,
+		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card. Supply either an existing clientId or newClient details to create and link a client in the same operation. Before using newClient, call find_duplicate_clients and surface any possible matches to the user. Drafts have no number yet and can be edited.", Write: true,
 			Schema: func() map[string]any {
 				schema := obj(draftCreateProps(), "type", "reference")
 				schema["oneOf"] = []any{

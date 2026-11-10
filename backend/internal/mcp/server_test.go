@@ -91,7 +91,7 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 			t.Errorf("bad tool %v", m["name"])
 		}
 	}
-	for _, want := range []string{"list_clients", "list_archived_clients", "create_client", "update_client", "archive_client", "restore_client", "list_documents", "get_document", "create_draft", "update_draft",
+	for _, want := range []string{"list_clients", "list_archived_clients", "find_duplicate_clients", "create_client", "update_client", "archive_client", "restore_client", "list_documents", "get_document", "create_draft", "update_draft",
 		"issue_document", "set_follow_up", "add_payment", "update_status", "convert_quotation", "export_document", "reveal_folder", "get_dashboard",
 		"get_settings", "get_storage", "get_capabilities", "export_register_spreadsheet", "get_audit_log"} {
 		if !names[want] {
@@ -103,6 +103,30 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 	}
 	if rpc(t, s, `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"nope","arguments":{}}}`)[0]["error"] == nil {
 		t.Error("unknown tool must be a protocol error")
+	}
+}
+
+func TestFindDuplicateClientsToolReturnsPossibleMatches(t *testing.T) {
+	s := newServer(t)
+	name, contact := "Acme Holdings", "Jane Doe"
+	existing, err := s.Svc.CreateClient(core.ClientInput{
+		Name:    core.Opt[string]{Set: true, Val: &name},
+		Contact: core.Opt[string]{Set: true, Val: &contact},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr := call(t, s, 2, "find_duplicate_clients", map[string]any{"name": "Jane Doe"})
+	if isErr {
+		t.Fatalf("find_duplicate_clients returned an error: %s", text)
+	}
+	var matches []core.ClientDuplicateMatch
+	if err := json.Unmarshal([]byte(text), &matches); err != nil {
+		t.Fatalf("decode duplicate matches: %v; text: %s", err, text)
+	}
+	if len(matches) != 1 || matches[0].Client.ID != existing.ID {
+		t.Fatalf("duplicate matches = %+v, want client %s", matches, existing.ID)
 	}
 }
 

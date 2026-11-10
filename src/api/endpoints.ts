@@ -26,6 +26,14 @@ export const ENDPOINTS: EndpointDefinition[] = [
   },
   {
     method: 'POST',
+    path: '/clients/check-duplicates',
+    clientMethod: 'findPotentialDuplicateClients',
+    mcpTool: 'find_duplicate_clients',
+    doc: 'docs/api/clients/check-duplicates.md',
+    summary: 'Find possible existing client matches',
+  },
+  {
+    method: 'POST',
     path: '/clients',
     clientMethod: 'createClient',
     mcpTool: 'create_client',

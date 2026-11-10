@@ -25,6 +25,25 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     assert.ok(newClient.id);
     assert.equal(newClient.name, 'Contract Test Corp');
 
+    const duplicateMatches = await api.findPotentialDuplicateClients({ name: ' contract   TEST corp ' });
+    assert.equal(duplicateMatches.length, 1);
+    assert.equal(duplicateMatches[0].client.id, newClient.id);
+    assert.ok(duplicateMatches[0].reasons.includes('name/contact'));
+
+    const phoneMatches = await api.findPotentialDuplicateClients({
+      name: 'Different Client',
+      phone: '082-999-0000',
+    });
+    assert.equal(phoneMatches[0].client.id, newClient.id);
+    assert.ok(phoneMatches[0].reasons.includes('phone'));
+
+    const emailMatches = await api.findPotentialDuplicateClients({
+      name: 'Different Client',
+      email: 'ALICE@CONTRACT.TEST',
+    });
+    assert.equal(emailMatches[0].client.id, newClient.id);
+    assert.ok(emailMatches[0].reasons.includes('email'));
+
     // Update client
     const updated = await api.updateClient(newClient.id, {
       contact: 'Tester Bob',
@@ -52,6 +71,8 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     await api.archiveClient(newClient.id);
     assert.equal((await api.listClients()).some((client) => client.id === newClient.id), false);
     assert.equal((await api.listArchivedClients()).some((client) => client.id === newClient.id), true);
+    const archivedMatches = await api.findPotentialDuplicateClients({ name: 'Contract Test Corp' });
+    assert.equal(archivedMatches[0].archived, true);
     assert.equal(
       (await api.updateDraft(history.id, { scope: 'Existing draft remains editable' })).scope,
       'Existing draft remains editable'

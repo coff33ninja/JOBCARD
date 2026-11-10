@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -84,5 +85,54 @@ func TestClientArchiveAndRestoreThroughAPI(t *testing.T) {
 	}
 	if len(active) != 1 || active[0].ID != client.ID {
 		t.Fatalf("active clients after restore = %v", active)
+	}
+}
+
+func TestFindPotentialDuplicateClientsThroughAPI(t *testing.T) {
+	ts := testServer(t, "")
+	base := ts.URL + "/api/v1"
+	created := do(t, http.MethodPost, base+"/clients", `{"name":"Acme Holdings","contact":"Jane Doe"}`, jsonHdr)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create client: status %d", created.StatusCode)
+	}
+	var existing struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(created.Body).Decode(&existing); err != nil {
+		t.Fatal(err)
+	}
+
+	response := do(t, http.MethodPost, base+"/clients/check-duplicates",
+		`{"name":"  ACME   HOLDINGS ","contact":"Jane Doe"}`, jsonHdr)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("check duplicates: status %d", response.StatusCode)
+	}
+	var matches []struct {
+		Client struct {
+			ID string `json:"id"`
+		} `json:"client"`
+		Reasons []string `json:"reasons"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&matches); err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].Client.ID != existing.ID {
+		t.Fatalf("duplicate matches = %+v, want client %s", matches, existing.ID)
+	}
+	if !strings.Contains(strings.Join(matches[0].Reasons, ","), "name/contact") {
+		t.Fatalf("duplicate reasons = %v", matches[0].Reasons)
+	}
+}
+
+func TestDuplicateClientCheckIsNotAuditedAsWrite(t *testing.T) {
+	handler := (&Server{}).auditWrites(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/clients/check-duplicates", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("check response status = %d, want %d", response.Code, http.StatusOK)
 	}
 }

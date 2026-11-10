@@ -1005,6 +1005,7 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
       <ClientModal
         key={isNewClientModalOpen ? 'open' : 'closed'}
         isOpen={isNewClientModalOpen}
+        findDuplicates={(input) => api.findPotentialDuplicateClients(input)}
         onClose={() => setIsNewClientModalOpen(false)}
         onSubmit={async (newClientData) => {
           const created = await api.createClient(newClientData);

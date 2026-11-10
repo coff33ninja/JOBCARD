@@ -16,6 +16,7 @@ import {
   ApiError,
   ISODate,
   DocumentRevision,
+  ClientDuplicateMatch,
 } from './types.ts';
 
 // Zod schemas for runtime response validation
@@ -27,6 +28,12 @@ const ClientSchema = z.object({
   email: z.string(),
   address: z.string(),
   notes: z.string(),
+});
+
+const ClientDuplicateMatchSchema = z.object({
+  client: ClientSchema,
+  archived: z.boolean(),
+  reasons: z.array(z.string()),
 });
 
 const LineItemSchema = z.object({
@@ -226,6 +233,13 @@ export class HttpApi implements ApiClient {
 
   async listArchivedClients(): Promise<Client[]> {
     return this.request('/clients/archived', { method: 'GET' }, z.array(ClientSchema));
+  }
+
+  async findPotentialDuplicateClients(input: CreateClientInput): Promise<ClientDuplicateMatch[]> {
+    return this.request('/clients/check-duplicates', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, z.array(ClientDuplicateMatchSchema));
   }
 
   async createClient(input: CreateClientInput): Promise<Client> {

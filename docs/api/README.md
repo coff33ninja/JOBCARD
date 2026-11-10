@@ -17,6 +17,7 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 
 - [GET /clients](clients/list.md) — List active clients
 - [GET /clients/archived](clients/archived.md) — List archived clients
+- [POST /clients/check-duplicates](clients/check-duplicates.md) — Find possible existing client matches
 - [POST /clients](clients/create.md) — Create a new client
 - [PUT /clients/{id}](clients/update.md) — Update an existing client
 - [DELETE /clients/{id}](clients/archive.md) — Archive a client while preserving documents

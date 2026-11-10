@@ -36,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 	const v = "/api/v1"
 	mux.HandleFunc("GET "+v+"/clients", s.listClients)
 	mux.HandleFunc("GET "+v+"/clients/archived", s.listArchivedClients)
+	mux.HandleFunc("POST "+v+"/clients/check-duplicates", s.findDuplicateClients)
 	mux.HandleFunc("POST "+v+"/clients", s.createClient)
 	mux.HandleFunc("PUT "+v+"/clients/{id}", s.updateClient)
 	mux.HandleFunc("DELETE "+v+"/clients/{id}", s.archiveClient)
@@ -173,6 +174,20 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, c)
+}
+
+func (s *Server) findDuplicateClients(w http.ResponseWriter, r *http.Request) {
+	var in core.ClientInput
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	matches, err := s.Svc.FindPotentialDuplicateClients(in)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, matches)
 }
 
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
@@ -521,6 +536,11 @@ func (s *Server) registerXLSX(w http.ResponseWriter, _ *http.Request) {
 // auditWrites records every state-changing API call (method, path, status). Bodies are not stored.
 func (s *Server) auditWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isDuplicateCheck := r.Method == http.MethodPost && r.URL.Path == "/api/v1/clients/check-duplicates"
+		if isDuplicateCheck {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if (r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodDelete) || !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)
 			return

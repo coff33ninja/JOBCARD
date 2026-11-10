@@ -156,6 +156,24 @@ func TestIssueDocumentFillsMissingTechnicianSignOff(t *testing.T) {
 	}
 }
 
+func TestNumberAlreadyAssignedRejectsActiveDuplicate(t *testing.T) {
+	candidate := "INV-2026-003"
+	docs := []domain.Doc{
+		{ID: "doc-1", Type: "invoice", Number: &candidate, Status: "sent"},
+		{ID: "doc-2", Type: "invoice", Status: "cancelled", Number: &[]string{"INV-2026-004"}[0]},
+		{ID: "doc-3", Type: "quotation", Number: &[]string{"QUO-2026-003"}[0], Status: "sent"},
+	}
+	if !numberAlreadyAssigned(docs, "invoice", candidate, "doc-new") {
+		t.Fatal("active invoice number should be detected as already assigned")
+	}
+	if numberAlreadyAssigned(docs, "invoice", candidate, "doc-1") {
+		t.Fatal("same document should not self-trigger the active-number conflict guard")
+	}
+	if numberAlreadyAssigned(docs, "invoice", "INV-2026-004", "doc-new") {
+		t.Fatal("cancelled invoice should not count as an active duplicate")
+	}
+}
+
 func TestDocumentReportColumnsMigrateLegacyDatabase(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
@@ -215,6 +233,97 @@ func TestCreateDraftWithClientRollsBackClientWhenDraftIsInvalid(t *testing.T) {
 	}
 	if len(clients) != 0 {
 		t.Fatalf("client creation should roll back with invalid draft, got %+v", clients)
+	}
+}
+
+func TestFindPotentialDuplicateClientsMatchesNamesAndContactDetails(t *testing.T) {
+	s := newTestService(t)
+	existing, err := s.CreateClient(ClientInput{
+		Name:    str("Acme Holdings"),
+		Contact: str("Jane Doe"),
+		Phone:   str("082 123 4567"),
+		Email:   str("accounts@acme.co.za"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := s.CreateClient(ClientInput{
+		Name:    str("Former Client"),
+		Contact: str("Alice Smith"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ArchiveClient(archived.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name         string
+		input        ClientInput
+		wantID       string
+		wantReason   string
+		wantArchived bool
+	}{
+		{
+			name:       "normalized company name",
+			input:      ClientInput{Name: str("  ACME   HOLDINGS ")},
+			wantID:     existing.ID,
+			wantReason: "name/contact",
+		},
+		{
+			name:       "person contact name",
+			input:      ClientInput{Name: str("Jane Doe")},
+			wantID:     existing.ID,
+			wantReason: "name/contact",
+		},
+		{
+			name:       "formatted phone",
+			input:      ClientInput{Name: str("Different Client"), Phone: str("082-123-4567")},
+			wantID:     existing.ID,
+			wantReason: "phone",
+		},
+		{
+			name:       "case-insensitive email",
+			input:      ClientInput{Name: str("Different Client"), Email: str("ACCOUNTS@ACME.CO.ZA")},
+			wantID:     existing.ID,
+			wantReason: "email",
+		},
+		{
+			name:         "archived client",
+			input:        ClientInput{Name: str("alice   smith")},
+			wantID:       archived.ID,
+			wantReason:   "name/contact",
+			wantArchived: true,
+		},
+		{
+			name:  "distinct name does not fuzzy match",
+			input: ClientInput{Name: str("Acme Holdings Ltd"), Phone: str("011 555 0199")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := s.FindPotentialDuplicateClients(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantID == "" {
+				if len(matches) != 0 {
+					t.Fatalf("unexpected duplicate matches: %+v", matches)
+				}
+				return
+			}
+			if len(matches) != 1 || matches[0].Client.ID != tt.wantID {
+				t.Fatalf("matches = %+v, want client %s", matches, tt.wantID)
+			}
+			if matches[0].Archived != tt.wantArchived {
+				t.Fatalf("archived = %v, want %v", matches[0].Archived, tt.wantArchived)
+			}
+			if !strings.Contains(strings.Join(matches[0].Reasons, ","), tt.wantReason) {
+				t.Fatalf("reasons = %v, want %q", matches[0].Reasons, tt.wantReason)
+			}
+		})
 	}
 }
 

@@ -11,6 +11,12 @@ export interface Client {
   notes: string;
 }
 
+export interface ClientDuplicateMatch {
+  client: Client;
+  archived: boolean;
+  reasons: string[];
+}
+
 export interface LineItem {
   description: string;
   detail?: string;

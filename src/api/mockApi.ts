@@ -7,6 +7,7 @@ import {
 } from './client.ts';
 import {
   Client,
+  ClientDuplicateMatch,
   Doc,
   DocType,
   Settings,
@@ -80,6 +81,35 @@ export class MockApi implements ApiClient {
     return this.clients
       .filter((client) => this.archivedClientIds.has(client.id))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async findPotentialDuplicateClients(input: CreateClientInput): Promise<ClientDuplicateMatch[]> {
+    if (!input.name?.trim()) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Client name is required', { name: 'Name is required' });
+    }
+
+    const normalizeName = (value: string): string => value.trim().toLowerCase().split(/\s+/).join(' ');
+    const normalizePhone = (value: string): string => value.replace(/\D/g, '');
+    const inputNames = [input.name, input.contact ?? ''].map(normalizeName).filter(Boolean);
+    const phone = normalizePhone(input.phone ?? '');
+    const email = input.email?.trim().toLowerCase() ?? '';
+
+    return this.clients.flatMap((client) => {
+      const existingNames = [client.name, client.contact].map(normalizeName);
+      const reasons: string[] = [];
+      if (inputNames.some((name) => existingNames.includes(name))) {
+        reasons.push('name/contact');
+      }
+      if (phone && phone === normalizePhone(client.phone)) {
+        reasons.push('phone');
+      }
+      if (email && email === client.email.trim().toLowerCase()) {
+        reasons.push('email');
+      }
+      return reasons.length > 0
+        ? [{ client: { ...client }, archived: this.archivedClientIds.has(client.id), reasons }]
+        : [];
+    });
   }
 
   async createClient(input: CreateClientInput): Promise<Client> {

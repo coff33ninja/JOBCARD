@@ -29,6 +29,7 @@ Body:
 
 ## Rules and side effects
 Generates a unique client ID. Creates client folder in storage when supported.
+Before saving a new client, the UI and MCP workflow check for possible matches using [POST /clients/check-duplicates](check-duplicates.md). This is warning-only: a user may continue when the record is intentionally separate.
 
 ## Example
 Request: `POST /api/v1/clients`

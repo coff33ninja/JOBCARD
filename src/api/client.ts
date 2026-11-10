@@ -14,6 +14,7 @@ import {
   Capabilities,
   DashboardSummary,
   DocumentRevision,
+  ClientDuplicateMatch,
 } from './types.ts';
 
 export interface DocumentFilters {
@@ -63,6 +64,7 @@ export interface AddPaymentInput {
 export interface ApiClient {
   listClients(): Promise<Client[]>;
   listArchivedClients(): Promise<Client[]>;
+  findPotentialDuplicateClients(input: CreateClientInput): Promise<ClientDuplicateMatch[]>;
   createClient(input: CreateClientInput): Promise<Client>;
   updateClient(id: string, input: Partial<CreateClientInput>): Promise<Client>;
   archiveClient(id: string): Promise<Client>;
