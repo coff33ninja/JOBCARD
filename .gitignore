@@ -25,3 +25,4 @@ backups/
 .vscode/mcp.json
 .cursor/mcp.json
 Samples/
+.serena/

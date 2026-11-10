@@ -3,6 +3,7 @@ import {
   FileText,
   LayoutDashboard,
   Users,
+  Package,
   Settings as SettingsIcon,
   PlusCircle,
   Menu,
@@ -10,7 +11,7 @@ import {
   Wrench,
 } from 'lucide-react';
 
-export type ActiveTab = 'dashboard' | 'register' | 'clients' | 'settings' | 'editor' | 'detail';
+export type ActiveTab = 'dashboard' | 'register' | 'clients' | 'inventory' | 'settings' | 'editor' | 'detail';
 
 export interface NavbarProps {
   activeTab: ActiveTab;
@@ -30,6 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { tab: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
     { tab: 'register', label: 'Register', icon: <FileText className="w-4 h-4" /> },
     { tab: 'clients', label: 'Clients', icon: <Users className="w-4 h-4" /> },
+    { tab: 'inventory', label: 'Inventory', icon: <Package className="w-4 h-4" /> },
     { tab: 'settings', label: 'Settings', icon: <SettingsIcon className="w-4 h-4" /> },
   ];
 

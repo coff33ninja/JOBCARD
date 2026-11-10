@@ -93,6 +93,46 @@ export interface Doc {
   updatedAt: string;
 }
 
+
+export type StockSource = 'purchase' | 'on_hand';
+
+export interface StockIntakeLineInput {
+  description: string;
+  quantity: number;
+  unitCostCents: Cents;
+  markupPercent: number;
+}
+
+export interface StockIntakeInput {
+  source: StockSource;
+  supplier: string;
+  couriered: boolean;
+  courierCostCents: Cents;
+  items: StockIntakeLineInput[];
+}
+
+export interface StockItem {
+  id: string;
+  intakeId: string;
+  source: StockSource;
+  supplier: string;
+  couriered: boolean;
+  courierCostCents: Cents;
+  description: string;
+  quantityReceived: number;
+  quantityAvailable: number;
+  unitCostCents: Cents;
+  markupPercent: number;
+  courierAllocatedCents: Cents;
+  createdAt: string;
+}
+
+export interface StockAllocationResult {
+  item: StockItem;
+  document: Doc;
+  quantityAssigned: number;
+}
+
 export interface DocumentRevision {
   id: string;
   documentId: string;

@@ -91,7 +91,7 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 			t.Errorf("bad tool %v", m["name"])
 		}
 	}
-	for _, want := range []string{"list_clients", "list_archived_clients", "find_duplicate_clients", "create_client", "update_client", "archive_client", "restore_client", "list_documents", "get_document", "create_draft", "update_draft",
+	for _, want := range []string{"list_clients", "list_stock_items", "create_stock_intake", "allocate_stock", "list_archived_clients", "find_duplicate_clients", "create_client", "update_client", "archive_client", "restore_client", "list_documents", "get_document", "create_draft", "update_draft",
 		"issue_document", "set_follow_up", "add_payment", "update_status", "convert_quotation", "export_document", "reveal_folder", "get_dashboard",
 		"get_settings", "get_storage", "get_capabilities", "export_register_spreadsheet", "get_audit_log"} {
 		if !names[want] {
@@ -127,6 +127,63 @@ func TestFindDuplicateClientsToolReturnsPossibleMatches(t *testing.T) {
 	}
 	if len(matches) != 1 || matches[0].Client.ID != existing.ID {
 		t.Fatalf("duplicate matches = %+v, want client %s", matches, existing.ID)
+	}
+}
+
+func TestStockToolsIntakeListAndAssignInventory(t *testing.T) {
+	s := newServer(t)
+	name := "Stock Client"
+	client, err := s.Svc.CreateClient(core.ClientInput{Name: core.Opt[string]{Set: true, Val: &name}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr := call(t, s, 2, "create_stock_intake", map[string]any{
+		"source": "purchase", "supplier": "Parts Shop", "couriered": true, "courierCostCents": 500,
+		"items": []any{map[string]any{
+			"description": "SSD", "quantity": 2, "unitCostCents": 10000, "markupPercent": 9,
+		}},
+	})
+	if isErr {
+		t.Fatalf("create_stock_intake returned an error: %s", text)
+	}
+	var items []core.StockItem
+	if err := json.Unmarshal([]byte(text), &items); err != nil {
+		t.Fatalf("decode stock intake: %v; text: %s", err, text)
+	}
+	if len(items) != 1 {
+		t.Fatalf("stock items = %+v", items)
+	}
+
+	text, isErr = call(t, s, 3, "allocate_stock", map[string]any{
+		"itemId": items[0].ID, "clientId": client.ID, "quantity": 1,
+	})
+	if !isErr || !strings.Contains(text, "confirm=true") {
+		t.Fatalf("allocate_stock must require confirmation: %s", text)
+	}
+	text, isErr = call(t, s, 4, "allocate_stock", map[string]any{
+		"itemId": items[0].ID, "clientId": client.ID, "quantity": 1, "confirm": true,
+	})
+	if isErr {
+		t.Fatalf("allocate_stock returned an error: %s", text)
+	}
+	var allocation core.StockAllocationResult
+	if err := json.Unmarshal([]byte(text), &allocation); err != nil {
+		t.Fatalf("decode stock allocation: %v; text: %s", err, text)
+	}
+	if allocation.Document.ClientID != client.ID || allocation.Item.QuantityAvailable != 1 {
+		t.Fatalf("unexpected stock allocation: %+v", allocation)
+	}
+
+	text, isErr = call(t, s, 5, "list_stock_items", map[string]any{})
+	if isErr {
+		t.Fatalf("list_stock_items returned an error: %s", text)
+	}
+	if err := json.Unmarshal([]byte(text), &items); err != nil {
+		t.Fatalf("decode stock list: %v; text: %s", err, text)
+	}
+	if len(items) != 1 || items[0].QuantityAvailable != 1 {
+		t.Fatalf("stock list did not reflect assignment: %+v", items)
 	}
 }
 

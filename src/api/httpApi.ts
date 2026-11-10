@@ -17,6 +17,9 @@ import {
   ISODate,
   DocumentRevision,
   ClientDuplicateMatch,
+  StockAllocationResult,
+  StockIntakeInput,
+  StockItem,
 } from './types.ts';
 
 // Zod schemas for runtime response validation
@@ -108,6 +111,29 @@ const DocSchema = z.object({
   folderPath: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+
+const StockItemSchema = z.object({
+  id: z.string(),
+  intakeId: z.string(),
+  source: z.enum(['purchase', 'on_hand']),
+  supplier: z.string(),
+  couriered: z.boolean(),
+  courierCostCents: z.number(),
+  description: z.string(),
+  quantityReceived: z.number().int(),
+  quantityAvailable: z.number().int(),
+  unitCostCents: z.number(),
+  markupPercent: z.number().int().min(8).max(10),
+  courierAllocatedCents: z.number(),
+  createdAt: z.string(),
+});
+
+const StockAllocationResultSchema = z.object({
+  item: StockItemSchema,
+  document: DocSchema,
+  quantityAssigned: z.number().int(),
 });
 
 const DocumentRevisionSchema = z.object({
@@ -229,6 +255,25 @@ export class HttpApi implements ApiClient {
 
   async listClients(): Promise<Client[]> {
     return this.request('/clients', { method: 'GET' }, z.array(ClientSchema));
+  }
+
+
+  async listStockItems(): Promise<StockItem[]> {
+    return this.request('/stock', { method: 'GET' }, z.array(StockItemSchema));
+  }
+
+  async createStockIntake(input: StockIntakeInput): Promise<StockItem[]> {
+    return this.request('/stock/intakes', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, z.array(StockItemSchema));
+  }
+
+  async allocateStock(itemId: string, clientId: string, quantity: number): Promise<StockAllocationResult> {
+    return this.request(`/stock/items/${encodeURIComponent(itemId)}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ clientId, quantity }),
+    }, StockAllocationResultSchema);
   }
 
   async listArchivedClients(): Promise<Client[]> {

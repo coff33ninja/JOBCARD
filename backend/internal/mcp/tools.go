@@ -136,6 +136,50 @@ func (s *Server) tools() []tool {
 	return []tool{
 		{Name: "list_clients", Description: "List active clients. Archived clients are available with list_archived_clients.", Schema: obj(map[string]any{}),
 			Run: func(_ json.RawMessage) (any, error) { return svc.ListClients() }},
+		{Name: "list_stock_items", Description: "List stock intake entries, available quantities, supplier and courier details, and stored markup. Check before assigning stock.", Schema: obj(map[string]any{}),
+			Run: func(_ json.RawMessage) (any, error) { return svc.ListStockItems() }},
+		{Name: "create_stock_intake", Description: "Record purchased stock or stock already on hand. Purchased stock requires its supplier; courier charges are split across items by purchase cost. Each item must have an 8–10% markup.", Write: true,
+			Schema: obj(map[string]any{
+				"source":           enum("purchase or stock already on hand", "purchase", "on_hand"),
+				"supplier":         str("Supplier or shop; required for purchases"),
+				"couriered":        boolean("Whether this stock intake was couriered"),
+				"courierCostCents": integer("Courier charge in cents, included in allocated client prices"),
+				"items": arr(obj(map[string]any{
+					"description":   str("Stock item description"),
+					"quantity":      integer("Quantity received"),
+					"unitCostCents": integer("Purchase cost per unit in cents"),
+					"markupPercent": integer("Markup for this stock line: 8, 9 or 10"),
+				}, "description", "quantity", "unitCostCents", "markupPercent"), "Items received in this intake"),
+			}, "source", "couriered", "courierCostCents", "items"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in core.StockIntakeInput
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				return svc.CreateStockIntake(in)
+			}},
+		{Name: "allocate_stock", Description: "Assign available stock to a client. This reduces inventory and adds the all-in stock price to that client's draft invoice; it does not issue the invoice. Confirm the exact client, item, and quantity with the user first.", Write: true,
+			Schema: obj(map[string]any{
+				"itemId":   str("Stock item ID from list_stock_items"),
+				"clientId": str("Existing client ID"),
+				"quantity": integer("Quantity to allocate from available stock"),
+				"confirm":  confirmProp,
+			}, "itemId", "clientId", "quantity", "confirm"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ItemID   string `json:"itemId"`
+					ClientID string `json:"clientId"`
+					Quantity int    `json:"quantity"`
+					Confirm  bool   `json:"confirm"`
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				if err := needConfirm(in.Confirm, "Stock allocation"); err != nil {
+					return nil, err
+				}
+				return svc.AllocateStock(in.ItemID, in.ClientID, in.Quantity)
+			}},
 		{Name: "list_archived_clients", Description: "List archived clients, including those with existing documents.", Schema: obj(map[string]any{}),
 			Run: func(_ json.RawMessage) (any, error) { return svc.ListArchivedClients() }},
 		{Name: "find_duplicate_clients", Description: "Check active and archived clients for exact name/contact, phone or email matches. Call before create_client or create_draft with newClient and tell the user about possible matches. This is warning-only; duplicates may still be created when intended.", Schema: obj(clientProps(), "name"),

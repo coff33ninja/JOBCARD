@@ -15,6 +15,9 @@ import {
   Capabilities,
   DashboardSummary,
   DocumentRevision,
+  StockAllocationResult,
+  StockIntakeInput,
+  StockItem,
   ApiError,
   ISODate,
 } from './types.ts';
@@ -27,6 +30,9 @@ export class MockApi implements ApiClient {
   private clients: Client[] = [];
   private readonly archivedClientIds = new Set<string>();
   private documents: Doc[] = [];
+  private stockItems: StockItem[] = [];
+  private readonly stockInvoiceIds = new Map<string, string>();
+  private readonly allocatedCourierCents = new Map<string, number>();
   private quotationRevisions: DocumentRevision[] = [];
   private settings: Settings;
   private storage: Storage;
@@ -75,6 +81,152 @@ export class MockApi implements ApiClient {
     return this.clients
       .filter((client) => !this.archivedClientIds.has(client.id))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+
+  async listStockItems(): Promise<StockItem[]> {
+    return JSON.parse(JSON.stringify(this.stockItems));
+  }
+
+  async createStockIntake(input: StockIntakeInput): Promise<StockItem[]> {
+    const supplier = input.supplier.trim();
+    if (input.source !== 'purchase' && input.source !== 'on_hand') {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Source must be purchase or on_hand');
+    }
+    if (input.source === 'purchase' && !supplier) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Supplier is required for purchased stock');
+    }
+    if (!Number.isSafeInteger(input.courierCostCents) || input.courierCostCents < 0 ||
+      (input.source === 'on_hand' && (input.couriered || input.courierCostCents !== 0)) ||
+      (!input.couriered && input.courierCostCents !== 0)) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Courier details are invalid for this stock intake');
+    }
+    if (input.items.length === 0) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'At least one stock item is required');
+    }
+
+    const weights = input.items.map((line) => {
+      const description = line.description.trim();
+      const valid = description.length > 0 && Number.isInteger(line.quantity) && line.quantity > 0 &&
+        line.quantity <= 1_000_000 && Number.isSafeInteger(line.unitCostCents) && line.unitCostCents > 0 &&
+        Number.isSafeInteger(line.unitCostCents * line.quantity) &&
+        Number.isInteger(line.markupPercent) && line.markupPercent >= 8 && line.markupPercent <= 10;
+      if (!valid) {
+        throw new ApiError(400, 'VALIDATION_FAILED', 'Stock items require a description, positive quantity and cost, and 8–10% markup');
+      }
+      return line.unitCostCents * line.quantity;
+    });
+    const totalCost = weights.reduce((sum, weight) => sum + weight, 0);
+    if (!Number.isSafeInteger(totalCost) || (input.courierCostCents > 0 && totalCost <= 0)) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Stock intake value is outside the supported range');
+    }
+
+    const courierShares = weights.map(() => 0);
+    if (input.courierCostCents > 0) {
+      const total = BigInt(totalCost);
+      const remainders: { index: number; remainder: bigint }[] = [];
+      let allocated = 0;
+      weights.forEach((weight, index) => {
+        const product = BigInt(input.courierCostCents) * BigInt(weight);
+        const share = product / total;
+        courierShares[index] = Number(share);
+        allocated += courierShares[index];
+        remainders.push({ index, remainder: product % total });
+      });
+      remainders.sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1);
+      for (let index = 0; allocated < input.courierCostCents; index++, allocated++) {
+        courierShares[remainders[index].index]++;
+      }
+    }
+
+    const intakeId = `stock-intake-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const createdAt = new Date().toISOString();
+    const created = input.items.map((line, index): StockItem => ({
+      id: `stock-item-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+      intakeId,
+      source: input.source,
+      supplier,
+      couriered: input.couriered,
+      courierCostCents: input.courierCostCents,
+      description: line.description.trim(),
+      quantityReceived: line.quantity,
+      quantityAvailable: line.quantity,
+      unitCostCents: line.unitCostCents,
+      markupPercent: line.markupPercent,
+      courierAllocatedCents: courierShares[index],
+      createdAt,
+    }));
+    this.stockItems.push(...created);
+    return JSON.parse(JSON.stringify(created));
+  }
+
+  async allocateStock(itemId: string, clientId: string, quantity: number): Promise<StockAllocationResult> {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1_000_000) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Assignment quantity must be between 1 and 1,000,000');
+    }
+    if (!this.clients.some((client) => client.id === clientId) || this.archivedClientIds.has(clientId)) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Client not found');
+    }
+    const item = this.stockItems.find((stockItem) => stockItem.id === itemId);
+    if (!item) {
+      throw new ApiError(404, 'NOT_FOUND', `Stock item ${itemId} not found`);
+    }
+    if (quantity > item.quantityAvailable) {
+      throw new ApiError(409, 'INSUFFICIENT_STOCK', 'Requested quantity exceeds available stock');
+    }
+
+    const remainingCourier = item.courierAllocatedCents - (this.allocatedCourierCents.get(itemId) || 0);
+    let courierShare = remainingCourier;
+    if (quantity < item.quantityAvailable) {
+      const numerator = BigInt(remainingCourier) * BigInt(quantity);
+      const denominator = BigInt(item.quantityAvailable);
+      const quotient = numerator / denominator;
+      const remainder = numerator % denominator;
+      courierShare = Number(quotient + (remainder * 2n >= denominator ? 1n : 0n));
+    }
+
+    const baseCourierPerUnit = Math.floor(courierShare / quantity);
+    const unitsWithExtraCent = courierShare % quantity;
+    const priceWithBaseCourier = Math.round((item.unitCostCents + baseCourierPerUnit) * (100 + item.markupPercent) / 100);
+    const invoiceLines: Doc['lines'] = [];
+    const baseQuantity = quantity - unitsWithExtraCent;
+    if (baseQuantity > 0) {
+      invoiceLines.push({
+        description: item.description,
+        qty: baseQuantity,
+        unitPriceCents: priceWithBaseCourier,
+        totalCents: Math.round(baseQuantity * priceWithBaseCourier),
+      });
+    }
+    if (unitsWithExtraCent > 0) {
+      const priceWithExtraCourier = Math.round((item.unitCostCents + baseCourierPerUnit + 1) * (100 + item.markupPercent) / 100);
+      invoiceLines.push({
+        description: item.description,
+        qty: unitsWithExtraCent,
+        unitPriceCents: priceWithExtraCourier,
+        totalCents: Math.round(unitsWithExtraCent * priceWithExtraCourier),
+      });
+    }
+    if (invoiceLines.length === 0 || invoiceLines.every((line) => line.unitPriceCents === priceWithBaseCourier)) {
+      invoiceLines.splice(0, invoiceLines.length, {
+        description: item.description,
+        qty: quantity,
+        unitPriceCents: priceWithBaseCourier,
+        totalCents: Math.round(quantity * priceWithBaseCourier),
+      });
+    }
+
+    let invoiceId = this.stockInvoiceIds.get(clientId);
+    let invoice = invoiceId ? this.documents.find((doc) => doc.id === invoiceId) : undefined;
+    if (!invoice || invoice.type !== 'invoice' || invoice.number !== null || invoice.archivedAt || invoice.status !== 'draft') {
+      invoice = await this.createDraft({ type: 'invoice', clientId, reference: 'Stock items' });
+      invoiceId = invoice.id;
+      this.stockInvoiceIds.set(clientId, invoiceId);
+    }
+    const document = await this.updateDraft(invoice.id, { lines: [...invoice.lines, ...invoiceLines] });
+    item.quantityAvailable -= quantity;
+    this.allocatedCourierCents.set(itemId, (this.allocatedCourierCents.get(itemId) || 0) + courierShare);
+    return JSON.parse(JSON.stringify({ item, document, quantityAssigned: quantity }));
   }
 
   async listArchivedClients(): Promise<Client[]> {

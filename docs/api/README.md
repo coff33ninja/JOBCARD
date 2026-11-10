@@ -25,6 +25,9 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 
 ### Documents
 
+- [GET /stock](stock/list.md) — List stock intake entries and available quantities
+- [POST /stock/intakes](stock/intakes.md) — Record purchased stock or stock already on hand
+- [POST /stock/items/{id}/assign](stock/assign.md) — Assign stock to a client and add it to their draft invoice
 - [GET /documents](documents/list.md) — List and filter document register
 - [GET /documents/archived](documents/archived.md) — List archived drafts
 - [GET /documents/{id}](documents/get.md) — Get document by ID

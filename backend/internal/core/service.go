@@ -154,6 +154,10 @@ func NewService(dataDir, clientsDir string, today func() string) (*Service, erro
 		db.Close()
 		return nil, fmt.Errorf("migrate document lifecycle columns: %w", err)
 	}
+	if err := ensureStockTables(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate stock tables: %w", err)
+	}
 	s := &Service{DB: db, Today: today, DataDir: dataDir, DBPath: dbPath, ClientsDir: clientsDir}
 	def, _ := json.Marshal(defaultSettings())
 	if _, err := db.Exec(`INSERT OR IGNORE INTO settings(id, json) VALUES(1, ?)`, string(def)); err != nil {

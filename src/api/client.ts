@@ -15,6 +15,9 @@ import {
   DashboardSummary,
   DocumentRevision,
   ClientDuplicateMatch,
+  StockAllocationResult,
+  StockIntakeInput,
+  StockItem,
 } from './types.ts';
 
 export interface DocumentFilters {
@@ -63,6 +66,9 @@ export interface AddPaymentInput {
 
 export interface ApiClient {
   listClients(): Promise<Client[]>;
+  listStockItems(): Promise<StockItem[]>;
+  createStockIntake(input: StockIntakeInput): Promise<StockItem[]>;
+  allocateStock(itemId: string, clientId: string, quantity: number): Promise<StockAllocationResult>;
   listArchivedClients(): Promise<Client[]>;
   findPotentialDuplicateClients(input: CreateClientInput): Promise<ClientDuplicateMatch[]>;
   createClient(input: CreateClientInput): Promise<Client>;

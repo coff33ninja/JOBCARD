@@ -10,6 +10,7 @@ import { RegisterView } from './views/RegisterView.tsx';
 import { DocumentEditorView } from './views/DocumentEditorView.tsx';
 import { DocumentDetailView } from './views/DocumentDetailView.tsx';
 import { ClientsView } from './views/ClientsView.tsx';
+import { InventoryView } from './views/InventoryView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
 import { DocType } from './api/types.ts';
 
@@ -81,6 +82,8 @@ export default function App() {
             }}
           />
         )}
+
+        {activeTab === 'inventory' && <InventoryView />}
 
         {activeTab === 'settings' && <SettingsView />}
 
