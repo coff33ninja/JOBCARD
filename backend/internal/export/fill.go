@@ -97,7 +97,9 @@ func normalizeParagraph(p string) string {
 			}
 			if ms >= rs {
 				nt.WriteString(s[cursor:ms])
-				nt.WriteString("{{" + s[m[2]:m[3]] + "}}")
+				nt.WriteString("{{")
+				nt.WriteString(s[m[2]:m[3]])
+				nt.WriteString("}}")
 			}
 			if e := minInt(me, re); e > cursor {
 				cursor = e
