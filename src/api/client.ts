@@ -55,8 +55,11 @@ export interface AddPaymentInput {
 
 export interface ApiClient {
   listClients(): Promise<Client[]>;
+  listArchivedClients(): Promise<Client[]>;
   createClient(input: CreateClientInput): Promise<Client>;
   updateClient(id: string, input: Partial<CreateClientInput>): Promise<Client>;
+  archiveClient(id: string): Promise<Client>;
+  restoreClient(id: string): Promise<Client>;
 
   listDocuments(filters?: DocumentFilters): Promise<Doc[]>;
   getDocument(id: string): Promise<Doc>;

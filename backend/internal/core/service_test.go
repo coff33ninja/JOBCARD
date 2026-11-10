@@ -66,6 +66,125 @@ func TestNumberingContinuesAndRestartsPerYear(t *testing.T) {
 	}
 }
 
+func TestClientArchivePreservesDocumentsAndCanBeRestored(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+	doc := draft(t, s, "invoice", c.ID, 1000)
+
+	if _, err := s.ArchiveClient(c.ID); err != nil {
+		t.Fatal(err)
+	}
+	active, err := s.ListClients()
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active clients after archive = %v, %v", active, err)
+	}
+	archived, err := s.ListArchivedClients()
+	if err != nil || len(archived) != 1 || archived[0].ID != c.ID {
+		t.Fatalf("archived clients = %v, %v", archived, err)
+	}
+	if got, err := s.GetDocument(doc.ID); err != nil || got.ClientID != c.ID {
+		t.Fatalf("historical document = %+v, %v", got, err)
+	}
+	if got, err := s.UpdateDraft(doc.ID, DraftInput{Scope: str("Existing draft remains editable")}); err != nil || got.Scope != "Existing draft remains editable" {
+		t.Fatalf("edit existing draft for archived client = %+v, %v", got, err)
+	}
+	_, err = s.CreateDraft(DraftInput{Type: str("invoice"), ClientID: str(c.ID), Reference: str("New work")})
+	wantStatus(t, err, 400, "VALIDATION_FAILED")
+
+	if _, err := s.RestoreClient(c.ID); err != nil {
+		t.Fatal(err)
+	}
+	active, err = s.ListClients()
+	if err != nil || len(active) != 1 || active[0].ID != c.ID {
+		t.Fatalf("active clients after restore = %v, %v", active, err)
+	}
+	archived, err = s.ListArchivedClients()
+	if err != nil || len(archived) != 0 {
+		t.Fatalf("archived clients after restore = %v, %v", archived, err)
+	}
+}
+
+func TestArchivedAtColumnMigratesLegacyDatabase(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := mustClient(t, s)
+	if _, err := s.DB.Exec(`ALTER TABLE clients DROP COLUMN archived_at`); err != nil {
+		t.Fatalf("prepare legacy schema: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if clients, err := s.ListClients(); err != nil || len(clients) != 1 || clients[0].ID != c.ID {
+		t.Fatalf("legacy clients after migration = %v, %v", clients, err)
+	}
+	if _, err := s.ArchiveClient(c.ID); err != nil {
+		t.Fatalf("archive migrated client: %v", err)
+	}
+	if clients, err := s.ListArchivedClients(); err != nil || len(clients) != 1 || clients[0].ID != c.ID {
+		t.Fatalf("archived clients after migration = %v, %v", clients, err)
+	}
+}
+
+func TestFollowUpDatePersistsAndLegacyDatabaseMigrates(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := mustClient(t, s)
+	invoice := draft(t, s, "invoice", c.ID, 0)
+	if _, err := s.IssueDocument(invoice.ID, "2026-11-08"); err != nil {
+		t.Fatal(err)
+	}
+	date := "2026-11-09"
+	if _, err := s.SetFollowUpDate(invoice.ID, &date); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetDocument(invoice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FollowUpDate == nil || *got.FollowUpDate != date {
+		t.Fatalf("reopened follow-up date = %v, want %s", got.FollowUpDate, date)
+	}
+	if _, err := s.DB.Exec(`ALTER TABLE documents DROP COLUMN follow_up_date`); err != nil {
+		t.Fatalf("prepare legacy schema: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	got, err = s.GetDocument(invoice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FollowUpDate != nil {
+		t.Fatalf("legacy document follow-up date = %v, want null", got.FollowUpDate)
+	}
+}
+
 func TestIssuedDocumentIsImmutable(t *testing.T) {
 	s := newTestService(t)
 	c := mustClient(t, s)
@@ -187,5 +306,32 @@ func TestSafeName(t *testing.T) {
 	}
 	if SafeName("  ... ") != "_" || SafeName("Apex Logistics") != "Apex Logistics" {
 		t.Fatal("SafeName")
+	}
+}
+
+func TestSeedResolvesFollowUpDates(t *testing.T) {
+	s := newTestService(t)
+	if seeded, err := s.Seed(filepath.Join("..", "..", "..", "seed", "seed.json")); err != nil || !seeded {
+		t.Fatalf("seed %v %v", seeded, err)
+	}
+	docs, err := s.AllDocuments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var withDate int
+	for _, d := range docs {
+		if d.FollowUpDate != nil {
+			withDate++
+			if len(*d.FollowUpDate) != 10 || (*d.FollowUpDate)[:2] != "20" {
+				t.Fatalf("%s: follow-up date not resolved: %q", d.ID, *d.FollowUpDate)
+			}
+		}
+	}
+	if withDate == 0 {
+		t.Fatal("seed should contain follow-up dates")
+	}
+	dash, err := s.Dashboard(2026)
+	if err != nil || dash.Attention.FollowUpsDue != 1 {
+		t.Fatalf("follow-ups due %d (%v), want 1 from the seeded overdue invoice", dash.Attention.FollowUpsDue, err)
 	}
 }

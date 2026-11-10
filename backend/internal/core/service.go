@@ -93,12 +93,12 @@ const schema = `
 CREATE TABLE IF NOT EXISTS clients(
   id TEXT PRIMARY KEY, name TEXT NOT NULL,
   contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
-  address TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+  address TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, archived_at TEXT);
 CREATE TABLE IF NOT EXISTS documents(
   id TEXT PRIMARY KEY, type TEXT NOT NULL, number TEXT UNIQUE,
   client_id TEXT NOT NULL REFERENCES clients(id),
   job_card_id TEXT, quotation_id TEXT,
-  issue_date TEXT, due_date TEXT, valid_until TEXT,
+  issue_date TEXT, due_date TEXT, valid_until TEXT, follow_up_date TEXT,
   reference TEXT NOT NULL, scope TEXT NOT NULL DEFAULT '',
   work_items TEXT NOT NULL DEFAULT '[]', lines TEXT NOT NULL DEFAULT '[]',
   tax_cents INTEGER NOT NULL DEFAULT 0, subtotal_cents INTEGER NOT NULL DEFAULT 0, total_cents INTEGER NOT NULL DEFAULT 0,
@@ -131,12 +131,84 @@ func NewService(dataDir, clientsDir string, today func() string) (*Service, erro
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
+	if err := ensureFollowUpDateColumn(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate follow-up date column: %w", err)
+	}
+	if err := ensureClientArchivedAtColumn(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate client archive column: %w", err)
+	}
 	s := &Service{DB: db, Today: today, DataDir: dataDir, DBPath: dbPath, ClientsDir: clientsDir}
 	def, _ := json.Marshal(defaultSettings())
 	if _, err := db.Exec(`INSERT OR IGNORE INTO settings(id, json) VALUES(1, ?)`, string(def)); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+func ensureFollowUpDateColumn(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(documents)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "follow_up_date" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE documents ADD COLUMN follow_up_date TEXT`)
+	return err
+}
+
+func ensureClientArchivedAtColumn(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(clients)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "archived_at" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE clients ADD COLUMN archived_at TEXT`)
+	return err
 }
 
 func (s *Service) Close() error { return s.DB.Close() }
@@ -224,7 +296,19 @@ type ClientInput struct {
 }
 
 func (s *Service) ListClients() ([]domain.Client, error) {
-	rows, err := s.DB.Query(`SELECT id,name,contact,phone,email,address,notes FROM clients`)
+	return s.listClients(false)
+}
+
+func (s *Service) ListArchivedClients() ([]domain.Client, error) {
+	return s.listClients(true)
+}
+
+func (s *Service) listClients(archived bool) ([]domain.Client, error) {
+	query := `SELECT id,name,contact,phone,email,address,notes FROM clients WHERE archived_at IS NULL`
+	if archived {
+		query = `SELECT id,name,contact,phone,email,address,notes FROM clients WHERE archived_at IS NOT NULL`
+	}
+	rows, err := s.DB.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +337,16 @@ func getClient(q queryer, id string) (domain.Client, error) {
 
 func (s *Service) GetClient(id string) (domain.Client, error) { return getClient(s.DB, id) }
 
+func getActiveClient(q queryer, id string) (domain.Client, error) {
+	var c domain.Client
+	err := q.QueryRow(`SELECT id,name,contact,phone,email,address,notes FROM clients WHERE id=? AND archived_at IS NULL`, id).
+		Scan(&c.ID, &c.Name, &c.Contact, &c.Phone, &c.Email, &c.Address, &c.Notes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, notFound("Client", id)
+	}
+	return c, err
+}
+
 func (s *Service) CreateClient(in ClientInput) (domain.Client, error) {
 	name := strings.TrimSpace(in.Name.Or(""))
 	if name == "" {
@@ -266,6 +360,24 @@ func (s *Service) CreateClient(in ClientInput) (domain.Client, error) {
 	}
 	_, err := s.DB.Exec(`INSERT INTO clients(id,name,contact,phone,email,address,notes,created_at) VALUES(?,?,?,?,?,?,?,?)`,
 		c.ID, c.Name, c.Contact, c.Phone, c.Email, c.Address, c.Notes, nowISO())
+	return c, err
+}
+
+func (s *Service) ArchiveClient(id string) (domain.Client, error) {
+	c, err := getClient(s.DB, id)
+	if err != nil {
+		return c, err
+	}
+	_, err = s.DB.Exec(`UPDATE clients SET archived_at=COALESCE(archived_at, ?) WHERE id=?`, nowISO(), id)
+	return c, err
+}
+
+func (s *Service) RestoreClient(id string) (domain.Client, error) {
+	c, err := getClient(s.DB, id)
+	if err != nil {
+		return c, err
+	}
+	_, err = s.DB.Exec(`UPDATE clients SET archived_at=NULL WHERE id=?`, id)
 	return c, err
 }
 
@@ -320,15 +432,15 @@ func (s *Service) EnsureClientFolder(clientID string) (string, error) {
 
 // ---------- documents ----------
 
-const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,reference,scope,work_items,lines,
+const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,follow_up_date,reference,scope,work_items,lines,
 tax_cents,subtotal_cents,total_cents,deposit_cents,status,terms,exclusions,turnaround,notes,created_at,updated_at`
 
 func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 	var d domain.Doc
-	var number, jc, qu, issue, due, valid sql.NullString
+	var number, jc, qu, issue, due, valid, followUp sql.NullString
 	var deposit sql.NullInt64
 	var wi, ln string
-	err := r.Scan(&d.ID, &d.Type, &number, &d.ClientID, &jc, &qu, &issue, &due, &valid, &d.Reference, &d.Scope, &wi, &ln,
+	err := r.Scan(&d.ID, &d.Type, &number, &d.ClientID, &jc, &qu, &issue, &due, &valid, &followUp, &d.Reference, &d.Scope, &wi, &ln,
 		&d.TaxCents, &d.SubtotalCents, &d.TotalCents, &deposit, &d.Status, &d.Terms, &d.Exclusions, &d.Turnaround, &d.Notes,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
@@ -336,6 +448,7 @@ func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 	}
 	d.Number, d.JobCardID, d.QuotationID = strPtr(number), strPtr(jc), strPtr(qu)
 	d.IssueDate, d.DueDate, d.ValidUntil = strPtr(issue), strPtr(due), strPtr(valid)
+	d.FollowUpDate = strPtr(followUp)
 	if deposit.Valid {
 		v := deposit.Int64
 		d.DepositCents = &v
@@ -485,9 +598,9 @@ func (s *Service) AllDocuments() ([]domain.Doc, error) { return s.queryDocs(s.DB
 func insertDoc(q queryer, d *domain.Doc) error {
 	wi, _ := json.Marshal(d.WorkItems)
 	ln, _ := json.Marshal(d.Lines)
-	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.Type, nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
-		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), d.Reference, d.Scope, string(wi), string(ln),
+		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate), d.Reference, d.Scope, string(wi), string(ln),
 		d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.CreatedAt, d.UpdatedAt)
 	return err
@@ -496,11 +609,11 @@ func insertDoc(q queryer, d *domain.Doc) error {
 func updateDoc(q queryer, d *domain.Doc) error {
 	wi, _ := json.Marshal(d.WorkItems)
 	ln, _ := json.Marshal(d.Lines)
-	_, err := q.Exec(`UPDATE documents SET number=?,client_id=?,job_card_id=?,quotation_id=?,issue_date=?,due_date=?,valid_until=?,
+	_, err := q.Exec(`UPDATE documents SET number=?,client_id=?,job_card_id=?,quotation_id=?,issue_date=?,due_date=?,valid_until=?,follow_up_date=?,
 reference=?,scope=?,work_items=?,lines=?,tax_cents=?,subtotal_cents=?,total_cents=?,deposit_cents=?,status=?,
 terms=?,exclusions=?,turnaround=?,notes=?,updated_at=? WHERE id=?`,
 		nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
-		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil),
+		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate),
 		d.Reference, d.Scope, string(wi), string(ln), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.UpdatedAt, d.ID)
 	return err
@@ -568,7 +681,7 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 	if len(f) > 0 {
 		return domain.Doc{}, invalid("type, clientId and reference are required", f)
 	}
-	if _, err := getClient(s.DB, cid); err != nil {
+	if _, err := getActiveClient(s.DB, cid); err != nil {
 		var ae *AppError
 		if errors.As(err, &ae) && ae.Status == 404 {
 			return domain.Doc{}, invalid("Client not found", map[string]string{"clientId": "Client not found"})
@@ -629,7 +742,11 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 	}
 	if in.ClientID.Set {
 		cid := in.ClientID.Or("")
-		if _, err := getClient(tx, cid); err != nil {
+		checkClient := getActiveClient
+		if cid == d.ClientID {
+			checkClient = getClient
+		}
+		if _, err := checkClient(tx, cid); err != nil {
 			return d, invalid("Client not found", map[string]string{"clientId": "Client not found"})
 		}
 		d.ClientID = cid
@@ -673,6 +790,38 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 	}
 	t := domain.CalcTotals(d.Lines, st.TaxRate, nil)
 	d.SubtotalCents, d.TaxCents, d.TotalCents = t.Subtotal, t.Tax, t.Total
+	d.UpdatedAt = nowISO()
+	if err := updateDoc(tx, &d); err != nil {
+		return d, err
+	}
+	if err := tx.Commit(); err != nil {
+		return d, err
+	}
+	return s.GetDocument(id)
+}
+
+func (s *Service) SetFollowUpDate(id string, followUpDate *string) (domain.Doc, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+
+	d, err := s.getDoc(tx, id)
+	if err != nil {
+		return d, err
+	}
+	if d.Type != "invoice" {
+		return d, appErr(http.StatusBadRequest, "INVALID_DOCUMENT_TYPE", "Follow-up dates only apply to invoices")
+	}
+	if d.Number == nil || d.Status == "cancelled" {
+		return d, appErr(http.StatusConflict, "INVALID_STATE", "Follow-up dates require an issued, non-cancelled invoice")
+	}
+	if followUpDate != nil && !domain.ValidDate(*followUpDate) {
+		return d, invalid("followUpDate must be YYYY-MM-DD or null", map[string]string{"followUpDate": "Must be YYYY-MM-DD or null"})
+	}
+
+	d.FollowUpDate = followUpDate
 	d.UpdatedAt = nowISO()
 	if err := updateDoc(tx, &d); err != nil {
 		return d, err

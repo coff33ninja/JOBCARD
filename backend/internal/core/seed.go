@@ -65,7 +65,7 @@ func (s *Service) Seed(path string) (bool, error) {
 		return &v
 	}
 	for _, d := range sf.Documents {
-		d.IssueDate, d.DueDate, d.ValidUntil = res(d.IssueDate), res(d.DueDate), res(d.ValidUntil)
+		d.IssueDate, d.DueDate, d.ValidUntil, d.FollowUpDate = res(d.IssueDate), res(d.DueDate), res(d.ValidUntil), res(d.FollowUpDate)
 		if d.CreatedAt == "" {
 			d.CreatedAt = nowISO()
 		} else {

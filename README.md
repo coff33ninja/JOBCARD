@@ -3,7 +3,7 @@
 JobCard is a single-user job card, quotation, and invoice manager for a sole-proprietor IT repair business in South Africa. It is designed to run locally on one machine and can use either:
 
 - an in-memory mock API for UI development and demos, or
-- a native Go backend with SQLite persistence for real use.
+- a native Go backend with SQLite persistence for real use. The Windows desktop EXE embeds the frontend and connects it to this backend.
 
 The app uses ZAR, keeps money in integer cents, and keeps business logic isolated in tested pure domain functions so formatting and totals remain consistent.
 
@@ -69,6 +69,7 @@ This starts Vite on port 3000 and uses `MockApi`, which loads `seed/seed.json` i
 ```bash
 npm run dev        # Vite dev server on port 3000
 npm run build      # production bundle to dist/
+npm run build:desktop # frontend bundle embedded by the Go desktop EXE
 npm test          # unit + contract + API docs tests
 npm run test:ci    # same as npm test but exits non-zero on failure
 npm run typecheck # TypeScript compiler check
@@ -86,6 +87,8 @@ By default JobCard uses `MockApi` and reads from `seed/seed.json` in memory. Thi
 ### Backend mode
 
 When `VITE_API=http`, the frontend routes requests through `HttpApi`, which validates responses with `zod` and throws structured API errors when something is wrong. The contract suite in [`src/api/apiContract.test.ts`](src/api/apiContract.test.ts) is designed to work against both the mock and the real backend.
+
+The Windows desktop build uses Vite only at build time. `npm run build:desktop` loads `.env.desktop` to select `HttpApi`, writes the static bundle to `backend/cmd/jobcard/dist`, and the Go build embeds that bundle in `backend/jobcard.exe`. At runtime, the EXE serves both the UI and `/api/v1` on the same origin; no Vite process or separate frontend port is used.
 
 To verify the live API contract:
 
@@ -110,36 +113,46 @@ These files are intended to stay aligned with the backend contract.
 
 ## Go backend (`backend/`)
 
-The Go project is a single binary that exposes the JobCard HTTP API under `/api/v1` and stores data in SQLite.
+The Go project is a single binary that exposes the JobCard HTTP API under `/api/v1` and stores data in SQLite. On Windows, build the tray version from the repository root with either script:
 
-```bash
-cd backend
-go build -o jobcard.exe ./cmd/jobcard
+```powershell
+.\scripts\build.ps1
+# Or from Command Prompt:
+scripts\build.bat
 ```
 
 ### Common startup examples
 
 ```bash
 # development: seed sample data into an empty database
-.\jobcard.exe --seed ..\seed\seed.json
+.\backend\jobcard.exe --seed .\seed\seed.json
 
-# real use: keep the database in a business folder and store client exports there
-.\jobcard.exe --clients-dir "G:\My Drive\BUSINESS\Clients"
+# double-click this single-exe tray app to launch JobCard
+.\scripts\build.ps1
+.\backend\jobcard.exe
 ```
+
+For real use, select **Move data to folder...** from the tray and choose an empty folder such as `G:\My Drive\BUSINESS\JobCard`. Use **Choose client files folder...** if client exports should live elsewhere.
+
+The Windows build script embeds the frontend and marks the EXE as a GUI application, so it starts in the system tray without opening a terminal. The tray menu can open the web UI, open or change the data/client/templates folders, or exit JobCard. Changing the data folder moves the current data only when the destination is empty; it never merges or overwrites, and the app restarts to use the new location. Selecting a different client-files or templates folder switches to that folder without moving the old contents. The selected folders are saved in `%APPDATA%\JobCardLauncher\config.json`, and logs are written to `%APPDATA%\JobCardLauncher\jobcard.log`.
 
 ### Backend flags
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--addr` | `127.0.0.1:8080` | Listen address. Keep it on localhost unless you explicitly want to secure it with a token. |
-| `--data-dir` | `%APPDATA%\JobCard` | SQLite database folder. |
-| `--clients-dir` | `<data-dir>\Clients` | Client folders and exported files. |
-| `--templates-dir` | `<data-dir>\Templates` | Editable `.docx` templates used for exports. |
+| `--addr` | `127.0.0.1:8080` | Advanced listen-address override. Keep it on localhost unless you explicitly want to secure it with a token. |
+| `--data-dir` | Remembered folder; initially `%APPDATA%\JobCard` | Advanced override. In desktop use, choose/move the data folder from the tray. |
+| `--clients-dir` | Remembered folder; initially `<data-dir>\Clients` | Advanced override. In desktop use, choose the client files folder from the tray. |
+| `--templates-dir` | Remembered folder; initially `<data-dir>\Templates` | Advanced override. In desktop use, choose the editable templates folder from the tray. |
 | `--seed` | none | Loads `seed/seed.json` into an empty database. Development only. |
 | `--today` | system date | Fixed date for deterministic testing. |
-| `--static` | none | Serves a built UI (`dist`) from `/`. |
-| `--token` | none | Requires a valid bearer token in the Authorization header on every `/api/` request when the server is not localhost only. |
-| `--mcp` | off | Runs the MCP server over stdio instead of the HTTP API. |
+| `--static` | embedded UI | Development override for serving a UI directory from disk. |
+| `--token` | none | Advanced override. Requires a valid bearer token in the Authorization header on every `/api/` request when the server is not localhost only. |
+| `--mcp` | off | Runs the MCP server over stdio instead of the HTTP API; uses the remembered folders unless overridden. |
+| `--tray` | on for Windows builds | Advanced override for tray mode. |
+| `--open` | on | Opens the web UI at startup; the tray menu can open it again later. |
+
+The tray replaces everyday folder switches with remembered settings. `--seed`, `--today`, and `--mcp` remain command-line-only development/integration modes; `--addr` and `--token` stay advanced security-sensitive overrides, and `--static` is for frontend development.
 
 ### Running the app against the backend
 

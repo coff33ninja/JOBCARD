@@ -14,9 +14,12 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 ## Endpoint Index
 
 ### Clients
-- [GET /clients](clients/list.md) — List all clients
+- [GET /clients](clients/list.md) — List active clients
+- [GET /clients/archived](clients/archived.md) — List archived clients
 - [POST /clients](clients/create.md) — Create a new client
 - [PUT /clients/{id}](clients/update.md) — Update an existing client
+- [DELETE /clients/{id}](clients/archive.md) — Archive a client while preserving documents
+- [POST /clients/{id}/restore](clients/restore.md) — Restore an archived client
 
 ### Documents
 - [GET /documents](documents/list.md) — List and filter document register

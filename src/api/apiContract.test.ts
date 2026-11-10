@@ -43,6 +43,28 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
         return true;
       }
     );
+
+    const history = await api.createDraft({
+      type: 'jobcard',
+      clientId: newClient.id,
+      reference: 'Archive history test',
+    });
+    await api.archiveClient(newClient.id);
+    assert.equal((await api.listClients()).some((client) => client.id === newClient.id), false);
+    assert.equal((await api.listArchivedClients()).some((client) => client.id === newClient.id), true);
+    assert.equal(
+      (await api.updateDraft(history.id, { scope: 'Existing draft remains editable' })).scope,
+      'Existing draft remains editable'
+    );
+    assert.equal((await api.getDocument(history.id)).clientId, newClient.id);
+    await assert.rejects(
+      async () => await api.createDraft({ type: 'jobcard', clientId: newClient.id, reference: 'Archived client' }),
+      (err: unknown) => err instanceof ApiError && err.status === 400
+    );
+
+    await api.restoreClient(newClient.id);
+    assert.equal((await api.listClients()).some((client) => client.id === newClient.id), true);
+    assert.equal((await api.listArchivedClients()).some((client) => client.id === newClient.id), false);
   });
 
   test(`[${name}] Document draft creation, updating, and issuing sequence`, async () => {

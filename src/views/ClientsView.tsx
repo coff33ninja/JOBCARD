@@ -12,6 +12,8 @@ import {
   ChevronRight,
   Inbox,
   AlertCircle,
+  Archive,
+  RotateCcw,
 } from 'lucide-react';
 import { Client, Doc } from '../api/types.ts';
 import { ClientModal } from '../components/ClientModal.tsx';
@@ -33,24 +35,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const api = getApiClient();
 
-  const loadData = async () => {
+  const loadData = async (archived = showArchived, preferredClientId?: string): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
       const [clientList, docList] = await Promise.all([
-        api.listClients(),
+        archived ? api.listArchivedClients() : api.listClients(),
         api.listDocuments(),
       ]);
       setClients(clientList);
       setDocuments(docList);
-      if (clientList.length > 0 && !selectedClient) {
-        setSelectedClient(clientList[0]);
-      }
+      setSelectedClient((current) =>
+        clientList.find((client) => client.id === preferredClientId) ??
+        clientList.find((client) => client.id === current?.id) ??
+        clientList[0] ??
+        null
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load clients');
     } finally {
@@ -59,8 +65,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData(showArchived);
+  }, [showArchived]);
+
+  const archiveSelectedClient = async (): Promise<void> => {
+    if (!selectedClient || !window.confirm(
+      `Archive ${selectedClient.name}? Its documents will be kept, and you can restore the client later.`
+    )) return;
+    try {
+      await api.archiveClient(selectedClient.id);
+      setShowArchived(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to archive client');
+    }
+  };
+
+  const restoreSelectedClient = async (): Promise<void> => {
+    if (!selectedClient) return;
+    try {
+      await api.restoreClient(selectedClient.id);
+      setShowArchived(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to restore client');
+    }
+  };
 
   const filteredClients = clients.filter((c) => {
     if (!searchQuery.trim()) return true;
@@ -97,23 +125,33 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Client Directory
+            {showArchived ? 'Archived Clients' : 'Client Directory'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Manage customer contact records, outstanding balances, and associated repair jobs.
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setClientToEdit(null);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md shadow-xs transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>New Client</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowArchived((archived) => !archived)}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+          >
+            {showArchived ? 'Show active clients' : 'View archived clients'}
+          </button>
+          {!showArchived && (
+            <button
+              onClick={() => {
+                setClientToEdit(null);
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md shadow-xs transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>New Client</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -143,7 +181,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             {loading ? (
               <div className="p-8 text-center text-xs text-slate-400">Loading clients...</div>
             ) : filteredClients.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400">No clients found</div>
+              <div className="p-8 text-center text-xs text-slate-400">
+                {showArchived ? 'No archived clients found' : 'No clients found'}
+              </div>
             ) : (
               filteredClients.map((client) => {
                 const metrics = getClientMetrics(client.id);
@@ -200,12 +240,31 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <Edit2 className="w-3 h-3" />
                       <span>Edit</span>
                     </button>
-                    <button
-                      onClick={() => onNewDocumentForClient(selectedClient.id)}
-                      className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded shadow-xs"
-                    >
-                      <span>+ Create Document</span>
-                    </button>
+                    {showArchived ? (
+                      <button
+                        onClick={restoreSelectedClient}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Restore</span>
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => onNewDocumentForClient(selectedClient.id)}
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded shadow-xs"
+                        >
+                          <span>+ Create Document</span>
+                        </button>
+                        <button
+                          onClick={archiveSelectedClient}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-white border border-rose-200 rounded hover:bg-rose-50"
+                        >
+                          <Archive className="w-3 h-3" />
+                          <span>Archive</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -307,16 +366,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* Client Modal (Add/Edit) */}
       <ClientModal
+        key={`${isModalOpen ? 'open' : 'closed'}-${clientToEdit?.id ?? 'new'}`}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         client={clientToEdit}
         onSubmit={async (input) => {
-          if (clientToEdit) {
-            await api.updateClient(clientToEdit.id, input);
-          } else {
-            await api.createClient(input);
-          }
-          await loadData();
+          const savedClient = clientToEdit
+            ? await api.updateClient(clientToEdit.id, input)
+            : await api.createClient(input);
+          const archived = Boolean(clientToEdit && showArchived);
+          setSelectedClient(savedClient);
+          setShowArchived(archived);
+          await loadData(archived, savedClient.id);
         }}
       />
     </div>

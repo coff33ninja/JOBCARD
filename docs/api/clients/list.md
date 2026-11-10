@@ -1,6 +1,6 @@
 # GET /clients
 
-List all registered clients in the system.
+List active clients in the system. Archived clients are available through `GET /clients/archived`.
 
 ## ApiClient method
 `listClients`
@@ -14,7 +14,7 @@ No parameters or request body required.
 ## Response
 - Status: `200 OK`
 - Type: `Client[]`
-- Returns an array of all client objects ordered by name.
+- Returns active client objects ordered by name.
 
 ## Errors
 | Status | Code | Condition |

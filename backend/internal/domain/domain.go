@@ -51,6 +51,7 @@ type Doc struct {
 	IssueDate     *string    `json:"issueDate"`
 	DueDate       *string    `json:"dueDate"`
 	ValidUntil    *string    `json:"validUntil"`
+	FollowUpDate  *string    `json:"followUpDate"`
 	Reference     string     `json:"reference"`
 	Scope         string     `json:"scope"`
 	WorkItems     []WorkItem `json:"workItems"`
@@ -413,8 +414,8 @@ type Dashboard struct {
 	} `json:"nextNumbers"`
 }
 
-// BuildDashboard mirrors MockApi.getDashboard. followUpsDue counts overdue invoices
-// (the contract has no follow-up date field).
+// BuildDashboard mirrors MockApi.getDashboard. followUpsDue counts unpaid invoices
+// whose follow-up reminder date has arrived.
 func BuildDashboard(docs []Doc, year int, today string) Dashboard {
 	var d Dashboard
 	d.Year = year
@@ -471,6 +472,8 @@ func BuildDashboard(docs []Doc, year int, today string) Dashboard {
 			default:
 				d.Ageing.D90Plus += bal
 			}
+		}
+		if inv.FollowUpDate != nil && bal > 0 && *inv.FollowUpDate <= today {
 			d.Attention.FollowUpsDue++
 		}
 		if inv.DueDate != nil && bal > 0 {

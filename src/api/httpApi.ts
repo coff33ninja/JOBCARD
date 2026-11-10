@@ -190,11 +190,23 @@ export class HttpApi implements ApiClient {
     return this.request('/clients', { method: 'GET' }, z.array(ClientSchema));
   }
 
+  async listArchivedClients(): Promise<Client[]> {
+    return this.request('/clients/archived', { method: 'GET' }, z.array(ClientSchema));
+  }
+
   async createClient(input: CreateClientInput): Promise<Client> {
     return this.request('/clients', {
       method: 'POST',
       body: JSON.stringify(input),
     }, ClientSchema);
+  }
+
+  async archiveClient(id: string): Promise<Client> {
+    return this.request(`/clients/${id}`, { method: 'DELETE' }, ClientSchema);
+  }
+
+  async restoreClient(id: string): Promise<Client> {
+    return this.request(`/clients/${id}/restore`, { method: 'POST' }, ClientSchema);
   }
 
   async updateClient(id: string, input: Partial<CreateClientInput>): Promise<Client> {

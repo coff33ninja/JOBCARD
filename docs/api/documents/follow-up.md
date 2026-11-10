@@ -23,9 +23,10 @@ Body:
 ## Errors
 | Status | Code | Condition |
 |---|---|---|
+| 400 | `INVALID_DOCUMENT_TYPE` | Follow-up dates are only supported on invoices |
 | 400 | `VALIDATION_FAILED` | `followUpDate` is not a valid `YYYY-MM-DD` date or `null` |
 | 404 | `NOT_FOUND` | Document not found |
-| 409 | `CONFLICT` | Follow-up date is being set on a document that is not an issued invoice |
+| 409 | `INVALID_STATE` | Follow-up date is being set on a draft or cancelled invoice |
 
 ## Rules and side effects
 Updates the follow-up reminder date only on an issued invoice. Clearing the date removes the reminder without changing the invoice's financial state.

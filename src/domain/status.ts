@@ -67,6 +67,7 @@ export function convertQuotationToInvoice(
     issueDate: null,
     dueDate: null,
     validUntil: null,
+    followUpDate: null,
     reference: quotation.reference,
     scope: quotation.scope,
     workItems: quotation.workItems ? JSON.parse(JSON.stringify(quotation.workItems)) : [],

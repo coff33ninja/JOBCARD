@@ -18,6 +18,7 @@ import { ExportMenu } from '../components/ExportMenu.tsx';
 import { PaymentModal } from '../components/PaymentModal.tsx';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 import { StatusPill } from '../components/StatusPill.tsx';
+import { FollowUpPanel } from '../components/FollowUpPanel.tsx';
 import { formatCents } from '../domain/money.ts';
 import { calculateDaysOverdue, getTodayISO } from '../domain/dates.ts';
 import { deriveInvoiceStatus, deriveQuotationStatus } from '../domain/status.ts';
@@ -474,6 +475,17 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
                 </p>
               )}
             </div>
+          )}
+
+          {/* Follow-up reminder (issued invoices only) */}
+          {doc.type === 'invoice' && (
+            <FollowUpPanel
+              doc={doc}
+              onSave={async (date) => {
+                await api.setFollowUp(doc.id, date);
+                await loadDocumentData();
+              }}
+            />
           )}
 
           {/* Linked Document Links */}

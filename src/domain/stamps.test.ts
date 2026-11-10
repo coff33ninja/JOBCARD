@@ -13,6 +13,7 @@ const baseDoc: Doc = {
   issueDate: '2026-11-01',
   dueDate: '2026-11-08',
   validUntil: null,
+  followUpDate: null,
   reference: 'Device',
   scope: 'Repair',
   workItems: [],

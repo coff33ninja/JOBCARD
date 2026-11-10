@@ -26,6 +26,8 @@ No parameters required.
 ## Rules and side effects
 Generates and downloads an Excel workbook summarizing all invoices, quotations, and job cards.
 
+Columns: Number, Type, Client, Job Card No, Reference, Issue Date, Due / Valid Until, Total, Paid, Balance, Status, Days Overdue, Follow-up Date.
+
 ## Example
 Request: `GET /api/v1/register/export.xlsx`
 

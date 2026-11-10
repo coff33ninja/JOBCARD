@@ -91,8 +91,8 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 			t.Errorf("bad tool %v", m["name"])
 		}
 	}
-	for _, want := range []string{"list_clients", "create_client", "update_client", "list_documents", "get_document", "create_draft", "update_draft",
-		"issue_document", "add_payment", "update_status", "convert_quotation", "export_document", "reveal_folder", "get_dashboard",
+	for _, want := range []string{"list_clients", "list_archived_clients", "create_client", "update_client", "archive_client", "restore_client", "list_documents", "get_document", "create_draft", "update_draft",
+		"issue_document", "set_follow_up", "add_payment", "update_status", "convert_quotation", "export_document", "reveal_folder", "get_dashboard",
 		"get_settings", "get_storage", "get_capabilities", "export_register_spreadsheet", "get_audit_log"} {
 		if !names[want] {
 			t.Errorf("missing tool %s", want)
@@ -103,6 +103,56 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 	}
 	if rpc(t, s, `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"nope","arguments":{}}}`)[0]["error"] == nil {
 		t.Error("unknown tool must be a protocol error")
+	}
+}
+
+func TestArchivedClientsCanBeRestored(t *testing.T) {
+	s := newServer(t)
+	text, isErr := call(t, s, 1, "create_client", map[string]any{"name": "Archive Test"})
+	if isErr {
+		t.Fatal(text)
+	}
+	var client struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(text), &client); err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr = call(t, s, 2, "create_draft", map[string]any{
+		"type": "jobcard", "clientId": client.ID, "reference": "Archive history",
+	})
+	if isErr {
+		t.Fatal(text)
+	}
+	var doc struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(text), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if text, isErr = call(t, s, 3, "archive_client", map[string]any{"id": client.ID}); isErr {
+		t.Fatal(text)
+	}
+	if text, isErr = call(t, s, 4, "list_clients", map[string]any{}); isErr || text != "[]" {
+		t.Fatalf("active clients = %s, error %v", text, isErr)
+	}
+	if text, isErr = call(t, s, 5, "list_archived_clients", map[string]any{}); isErr || !strings.Contains(text, client.ID) {
+		t.Fatalf("archived clients = %s, error %v", text, isErr)
+	}
+	if text, isErr = call(t, s, 6, "get_document", map[string]any{"id": doc.ID}); isErr || !strings.Contains(text, client.ID) {
+		t.Fatalf("historical document = %s, error %v", text, isErr)
+	}
+	if text, isErr = call(t, s, 7, "create_draft", map[string]any{
+		"type": "jobcard", "clientId": client.ID, "reference": "New work",
+	}); !isErr || !strings.Contains(text, "VALIDATION_FAILED") {
+		t.Fatalf("draft for archived client = %s, error %v", text, isErr)
+	}
+	if text, isErr = call(t, s, 8, "restore_client", map[string]any{"id": client.ID}); isErr {
+		t.Fatal(text)
+	}
+	if text, isErr = call(t, s, 9, "list_clients", map[string]any{}); isErr || !strings.Contains(text, client.ID) {
+		t.Fatalf("restored clients = %s, error %v", text, isErr)
 	}
 }
 

@@ -65,18 +65,26 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
       try {
         setLoading(true);
         setError(null);
-        const [clientsList, settingsData] = await Promise.all([
+        const [activeClients, settingsData] = await Promise.all([
           api.listClients(),
           api.getSettings(),
         ]);
 
         if (!isMounted) return;
-        setClients(clientsList);
         setSettings(settingsData);
 
         if (docId) {
           const doc = await api.getDocument(docId);
           if (!isMounted) return;
+          let clientsList = activeClients;
+          if (!clientsList.some((client) => client.id === doc.clientId)) {
+            const archivedClients = await api.listArchivedClients();
+            clientsList = [
+              ...clientsList,
+              ...archivedClients.filter((client) => client.id === doc.clientId),
+            ];
+          }
+          setClients(clientsList);
           setExistingDoc(doc);
           setType(doc.type);
           setClientId(doc.clientId);
@@ -92,9 +100,10 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           setTurnaround(doc.turnaround);
           setNotes(doc.notes);
         } else {
+          setClients(activeClients);
           // Defaults for new draft
-          if (clientsList.length > 0) {
-            setClientId(clientsList[0].id);
+          if (activeClients.length > 0) {
+            setClientId(activeClients[0].id);
           }
           if (initialType === 'invoice') {
             setTerms(`Payment due within ${settingsData.defaultTermsDays || 7} days.`);
@@ -695,6 +704,7 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
 
       {/* New Client Modal */}
       <ClientModal
+        key={isNewClientModalOpen ? 'open' : 'closed'}
         isOpen={isNewClientModalOpen}
         onClose={() => setIsNewClientModalOpen(false)}
         onSubmit={async (newClientData) => {

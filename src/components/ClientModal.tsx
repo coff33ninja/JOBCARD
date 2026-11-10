@@ -16,20 +16,22 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   client,
   onSubmit,
 }) => {
-  const [name, setName] = useState(client?.name || '');
-  const [contact, setContact] = useState(client?.contact || '');
-  const [phone, setPhone] = useState(client?.phone || '');
-  const [email, setEmail] = useState(client?.email || '');
-  const [address, setAddress] = useState(client?.address || '');
-  const [notes, setNotes] = useState(client?.notes || '');
+  const [form, setForm] = useState<Partial<CreateClientInput>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fieldValue = (field: keyof CreateClientInput): string =>
+    form[field] ?? client?.[field] ?? '';
+
+  const updateField = (field: keyof CreateClientInput, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    if (!fieldValue('name').trim()) {
       setError('Client or Business Name is required');
       return;
     }
@@ -37,12 +39,12 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     try {
       setIsSubmitting(true);
       await onSubmit({
-        name: name.trim(),
-        contact: contact.trim(),
-        phone: phone.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        notes: notes.trim(),
+        name: fieldValue('name').trim(),
+        contact: fieldValue('contact').trim(),
+        phone: fieldValue('phone').trim(),
+        email: fieldValue('email').trim(),
+        address: fieldValue('address').trim(),
+        notes: fieldValue('notes').trim(),
       });
       onClose();
     } catch (err: unknown) {
@@ -80,8 +82,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
               type="text"
               required
               placeholder="e.g. Acme Corporation"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={fieldValue('name')}
+              onChange={(e) => updateField('name', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm"
             />
           </div>
@@ -94,8 +96,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
               <input
                 type="text"
                 placeholder="e.g. Jane Doe"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
+                value={fieldValue('contact')}
+                onChange={(e) => updateField('contact', e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm"
               />
             </div>
@@ -106,8 +108,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
               <input
                 type="text"
                 placeholder="e.g. 082 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                value={fieldValue('phone')}
+                onChange={(e) => updateField('phone', e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm"
               />
             </div>
@@ -120,8 +122,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             <input
               type="email"
               placeholder="e.g. accounts@acme.co.za"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={fieldValue('email')}
+              onChange={(e) => updateField('email', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm"
             />
           </div>
@@ -133,8 +135,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             <textarea
               rows={2}
               placeholder="e.g. 10 Main Road, Cape Town"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              value={fieldValue('address')}
+              onChange={(e) => updateField('address', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm resize-none"
             />
           </div>
@@ -146,8 +148,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             <input
               type="text"
               placeholder="e.g. Server room access code 1234"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={fieldValue('notes')}
+              onChange={(e) => updateField('notes', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 text-sm"
             />
           </div>

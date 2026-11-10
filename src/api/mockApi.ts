@@ -23,6 +23,7 @@ import { deriveInvoiceStatus, deriveQuotationStatus, convertQuotationToInvoice }
 
 export class MockApi implements ApiClient {
   private clients: Client[] = [];
+  private readonly archivedClientIds = new Set<string>();
   private documents: Doc[] = [];
   private settings: Settings;
   private storage: Storage;
@@ -68,7 +69,15 @@ export class MockApi implements ApiClient {
 
   // --- Clients ---
   async listClients(): Promise<Client[]> {
-    return [...this.clients].sort((a, b) => a.name.localeCompare(b.name));
+    return this.clients
+      .filter((client) => !this.archivedClientIds.has(client.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async listArchivedClients(): Promise<Client[]> {
+    return this.clients
+      .filter((client) => this.archivedClientIds.has(client.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async createClient(input: CreateClientInput): Promise<Client> {
@@ -102,6 +111,24 @@ export class MockApi implements ApiClient {
       name: input.name !== undefined ? input.name.trim() : this.clients[idx].name,
     };
     return { ...this.clients[idx] };
+  }
+
+  async archiveClient(id: string): Promise<Client> {
+    const client = this.clients.find((item) => item.id === id);
+    if (!client) {
+      throw new ApiError(404, 'NOT_FOUND', `Client ${id} not found`);
+    }
+    this.archivedClientIds.add(id);
+    return { ...client };
+  }
+
+  async restoreClient(id: string): Promise<Client> {
+    const client = this.clients.find((item) => item.id === id);
+    if (!client) {
+      throw new ApiError(404, 'NOT_FOUND', `Client ${id} not found`);
+    }
+    this.archivedClientIds.delete(id);
+    return { ...client };
   }
 
   // --- Documents ---
@@ -159,6 +186,10 @@ export class MockApi implements ApiClient {
     if (!input.type || !input.clientId || !input.reference) {
       throw new ApiError(400, 'VALIDATION_FAILED', 'type, clientId, and reference are required');
     }
+    const client = this.clients.find((item) => item.id === input.clientId);
+    if (!client || this.archivedClientIds.has(input.clientId)) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Client not found');
+    }
 
     const lines = (input.lines || []).map((l) => ({
       ...l,
@@ -168,7 +199,6 @@ export class MockApi implements ApiClient {
     const totals = calculateTotals(lines, this.settings.taxRate, []);
     const nowIso = new Date().toISOString();
 
-    const client = this.clients.find((c) => c.id === input.clientId);
     const folderPath = client ? `C:\\JobCard\\Clients\\${client.name}` : null;
 
     const newDoc: Doc = {
@@ -213,6 +243,14 @@ export class MockApi implements ApiClient {
     const current = this.documents[idx];
     if (current.number !== null) {
       throw new ApiError(409, 'CANNOT_EDIT_ISSUED', 'Cannot edit an already issued document');
+    }
+    if (
+      input.clientId !== undefined &&
+      input.clientId !== current.clientId &&
+      (!this.clients.some((client) => client.id === input.clientId) ||
+        this.archivedClientIds.has(input.clientId))
+    ) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Client not found');
     }
 
     const lines = input.lines !== undefined ? input.lines.map((l) => ({

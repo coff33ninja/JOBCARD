@@ -4,20 +4,20 @@
 
 ## Register it in Claude Desktop
 
-Add to `claude_desktop_config.json` (use the same `--data-dir`, `--clients-dir` and `--templates-dir` as the UI server; the defaults match):
+Add to `claude_desktop_config.json`. The MCP process reads the same remembered folders as the tray app from `%APPDATA%\JobCardLauncher\config.json`, so it sees the same database and templates:
 
 ```json
 {
   "mcpServers": {
     "jobcard": {
       "command": "E:\\SCRIPTS\\Operations\\JOBCARD\\JOBCARD\\backend\\jobcard.exe",
-      "args": ["--mcp", "--clients-dir", "G:\\My Drive\\BUSINESS\\Clients", "--templates-dir", "G:\\My Drive\\BUSINESS\\Templates"]
+      "args": ["--mcp"]
     }
   }
 }
 ```
 
-Restart Claude Desktop. Logs go to stderr, stdout carries only JSON-RPC. The HTTP server and the MCP process can run at the same time (SQLite WAL, immediate transactions).
+Restart Claude Desktop. Logs are written to `%APPDATA%\JobCardLauncher\jobcard.log`; stdout carries only JSON-RPC. The HTTP server and the MCP process can run at the same time (SQLite WAL, immediate transactions).
 
 ## Tools
 
@@ -25,10 +25,13 @@ Names match `mcpTool` in `src/api/endpoints.ts`. Money is always integer cents; 
 
 | Tool | What it does | Needs `confirm=true` |
 |---|---|---|
-| `list_clients`, `create_client`, `update_client` | Clients | no |
+| `list_clients`, `list_archived_clients` | List active or archived clients | no |
+| `create_client`, `update_client` | Create or edit client details | no |
+| `archive_client`, `restore_client` | Archive a client without deleting its documents, or restore it | no |
 | `list_documents`, `get_document` | Read quotations, invoices, job cards | no |
 | `create_draft`, `update_draft` | Create and edit drafts (no number yet) | no |
 | `issue_document` | Assign the permanent number and lock the document | **yes** |
+| `set_follow_up` | Set or clear a reminder date on an issued invoice | no |
 | `add_payment` | Record a payment on an issued invoice (cannot be deleted) | **yes** |
 | `convert_quotation` | Draft invoice from an issued quotation | **yes** |
 | `update_status` | Accept/decline, job card progress, cancel | only when cancelling |
@@ -42,6 +45,6 @@ Names match `mcpTool` in `src/api/endpoints.ts`. Money is always integer cents; 
 
 - **Drafts first.** The AI fills in drafts; permanent steps (issue, payment, convert, cancel) are refused unless the call carries `confirm=true`, and the server instructions tell the model to get your approval for that exact document first. The check is enforced in the server, not only in the prompt.
 - **No settings access.** Business and bank details can be read but not changed over MCP (`update_settings` is deliberately not exposed). Change them in the app.
-- **No deletes.** There is no delete tool anywhere.
-- **Audit log.** Every write through MCP (and every POST/PUT through the API) is recorded with time, source, action and arguments. Ask for `get_audit_log` to see what changed.
+- **No permanent client deletes.** Archiving hides a client from active lists and new documents; existing documents stay linked, and `restore_client` reverses the archive.
+- **Audit log.** Every write through MCP (and every POST/PUT/DELETE through the API) is recorded with time, source, action and arguments. Ask for `get_audit_log` to see what changed.
 - **Errors are readable.** Failures come back as `{"error":{"code","message","fields"}}` so the model can correct itself.

@@ -1,3 +1,4 @@
+// Package mcp exposes the JobCard service over the Model Context Protocol.
 package mcp
 
 import (
@@ -108,8 +109,10 @@ type idArgs struct {
 func (s *Server) tools() []tool {
 	svc := s.Svc
 	return []tool{
-		{Name: "list_clients", Description: "List all clients.", Schema: obj(map[string]any{}),
-			Run: func(a json.RawMessage) (any, error) { return svc.ListClients() }},
+		{Name: "list_clients", Description: "List active clients. Archived clients are available with list_archived_clients.", Schema: obj(map[string]any{}),
+			Run: func(_ json.RawMessage) (any, error) { return svc.ListClients() }},
+		{Name: "list_archived_clients", Description: "List archived clients, including those with existing documents.", Schema: obj(map[string]any{}),
+			Run: func(_ json.RawMessage) (any, error) { return svc.ListArchivedClients() }},
 		{Name: "create_client", Description: "Create a client. Only name is required.", Write: true,
 			Schema: obj(clientProps(), "name"),
 			Run: func(a json.RawMessage) (any, error) {
@@ -131,6 +134,24 @@ func (s *Server) tools() []tool {
 					return nil, err
 				}
 				return svc.UpdateClient(id.ID, in)
+			}},
+		{Name: "archive_client", Description: "Archive a client without deleting its documents. This can be undone with restore_client.", Write: true,
+			Schema: obj(map[string]any{"id": str("Client ID")}, "id"),
+			Run: func(a json.RawMessage) (any, error) {
+				var id idArgs
+				if err := decode(a, &id); err != nil {
+					return nil, err
+				}
+				return svc.ArchiveClient(id.ID)
+			}},
+		{Name: "restore_client", Description: "Restore an archived client so it appears in active lists and can be used for new documents.", Write: true,
+			Schema: obj(map[string]any{"id": str("Client ID")}, "id"),
+			Run: func(a json.RawMessage) (any, error) {
+				var id idArgs
+				if err := decode(a, &id); err != nil {
+					return nil, err
+				}
+				return svc.RestoreClient(id.ID)
 			}},
 		{Name: "list_documents", Description: "List quotations, invoices and job cards, newest first. Status filters use the derived status (e.g. overdue).",
 			Schema: obj(map[string]any{
@@ -214,6 +235,21 @@ func (s *Server) tools() []tool {
 					_, _ = svc.EnsureClientFolder(d.ClientID)
 				}
 				return d, err
+			}},
+		{Name: "set_follow_up", Description: "Set or clear a reminder date on an issued, non-cancelled invoice.", Write: true,
+			Schema: obj(map[string]any{
+				"id":           str("Invoice ID"),
+				"followUpDate": map[string]any{"type": []string{"string", "null"}, "description": "ISO date YYYY-MM-DD, or null to clear the reminder"},
+			}, "id", "followUpDate"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ID           string  `json:"id"`
+					FollowUpDate *string `json:"followUpDate"`
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				return svc.SetFollowUpDate(in.ID, in.FollowUpDate)
 			}},
 		{Name: "add_payment", Description: "PERMANENT. Record a payment against an issued invoice. Payments cannot be deleted. Requires user approval and confirm=true.", Write: true,
 			Schema: obj(map[string]any{
@@ -301,14 +337,14 @@ func (s *Server) tools() []tool {
 			}},
 		{Name: "get_settings", Description: "Read business and bank details, tax rate and default terms (read-only here; the user edits them in the app).",
 			Schema: obj(map[string]any{}),
-			Run:    func(a json.RawMessage) (any, error) { return svc.GetSettings() }},
+			Run:    func(_ json.RawMessage) (any, error) { return svc.GetSettings() }},
 		{Name: "get_storage", Description: "Where the database and client folders live.", Schema: obj(map[string]any{}),
-			Run: func(a json.RawMessage) (any, error) { return svc.Storage(), nil }},
+			Run: func(_ json.RawMessage) (any, error) { return svc.Storage(), nil }},
 		{Name: "get_capabilities", Description: "Which export formats and actions this machine supports (docx, pdf, reveal in folder).", Schema: obj(map[string]any{}),
-			Run: func(a json.RawMessage) (any, error) { return capabilities(), nil }},
+			Run: func(_ json.RawMessage) (any, error) { return capabilities(), nil }},
 		{Name: "export_register_spreadsheet", Description: "Write the full register (invoices, quotations, job cards) to an .xlsx file and return its path.", Write: true,
 			Schema: obj(map[string]any{}),
-			Run: func(a json.RawMessage) (any, error) {
+			Run: func(_ json.RawMessage) (any, error) {
 				data, name, err := svc.RegisterSpreadsheet()
 				if err != nil {
 					return nil, err

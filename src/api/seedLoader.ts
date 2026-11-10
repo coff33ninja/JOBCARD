@@ -46,6 +46,7 @@ export function loadSeed(raw: RawSeedData, todayISO: ISODate = getTodayISO()): L
     const issueDate = rawDoc.issueDate ? resolveRelativeDate(rawDoc.issueDate, todayISO) : null;
     const dueDate = rawDoc.dueDate ? resolveRelativeDate(rawDoc.dueDate, todayISO) : null;
     const validUntil = rawDoc.validUntil ? resolveRelativeDate(rawDoc.validUntil, todayISO) : null;
+    const followUpDate = rawDoc.followUpDate ? resolveRelativeDate(rawDoc.followUpDate, todayISO) : null;
     const createdAt = rawDoc.createdAt ? resolveRelativeDate(rawDoc.createdAt, todayISO) : new Date().toISOString();
     const updatedAt = rawDoc.updatedAt ? resolveRelativeDate(rawDoc.updatedAt, todayISO) : new Date().toISOString();
 
@@ -66,6 +67,7 @@ export function loadSeed(raw: RawSeedData, todayISO: ISODate = getTodayISO()): L
       issueDate,
       dueDate,
       validUntil,
+      followUpDate,
       createdAt,
       updatedAt,
       lines,

@@ -144,7 +144,7 @@ func TestDashboard(t *testing.T) {
 	today := "2026-11-08"
 	n1, n2 := sp("INV-2026-001"), sp("INV-2026-002")
 	docs := []Doc{
-		{Type: "invoice", Status: "sent", Number: n1, TotalCents: 1000, IssueDate: sp("2026-10-01"), DueDate: sp("2026-10-08")},
+		{Type: "invoice", Status: "sent", Number: n1, TotalCents: 1000, IssueDate: sp("2026-10-01"), DueDate: sp("2026-10-08"), FollowUpDate: sp("2026-11-07")},
 		{Type: "invoice", Status: "sent", Number: n2, TotalCents: 500, IssueDate: sp("2026-11-05"), DueDate: sp("2026-11-12"), Payments: []Payment{{AmountCents: 200}}},
 		{Type: "invoice", Status: "cancelled", Number: sp("INV-2026-003"), TotalCents: 9999, IssueDate: sp("2026-11-01")},
 	}
@@ -152,7 +152,7 @@ func TestDashboard(t *testing.T) {
 	if d.Totals.InvoicedCents != 1500 || d.Totals.PaidCents != 200 || d.Totals.OutstandingCents != 1300 || d.Totals.OverdueCents != 1000 {
 		t.Fatalf("totals %+v", d.Totals)
 	}
-	if d.Ageing.D31_60 != 1000 || d.Attention.DueNext7Count != 1 || d.Attention.DueNext7Cents != 300 {
+	if d.Ageing.D31_60 != 1000 || d.Attention.DueNext7Count != 1 || d.Attention.DueNext7Cents != 300 || d.Attention.FollowUpsDue != 1 {
 		t.Fatalf("ageing/attention %+v %+v", d.Ageing, d.Attention)
 	}
 	if d.StatusCounts["cancelled"] != 1 || d.StatusCounts["overdue"] != 1 || len(d.Monthly) != 12 || d.Monthly[9].InvoicedCents != 1000 {

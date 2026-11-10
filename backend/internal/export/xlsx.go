@@ -33,13 +33,13 @@ func RegisterXLSX(docs []domain.Doc, clients []domain.Client, today string) ([]b
 	defer f.Close()
 	sheet := "Register"
 	f.SetSheetName("Sheet1", sheet)
-	head := []string{"Number", "Type", "Client", "Job Card No", "Reference", "Issue Date", "Due / Valid Until", "Total", "Paid", "Balance", "Status", "Days Overdue"}
+	head := []string{"Number", "Type", "Client", "Job Card No", "Reference", "Issue Date", "Due / Valid Until", "Total", "Paid", "Balance", "Status", "Days Overdue", "Follow-up Date"}
 	for i, h := range head {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		f.SetCellValue(sheet, cell, h)
 	}
 	bold, _ := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true, Color: "FFFFFF"}, Fill: excelize.Fill{Type: "pattern", Color: []string{"18374E"}, Pattern: 1}})
-	f.SetCellStyle(sheet, "A1", "L1", bold)
+	f.SetCellStyle(sheet, "A1", "M1", bold)
 	money, _ := f.NewStyle(&excelize.Style{CustomNumFmt: strPtr(`"R"#,##0.00`)})
 
 	row := 2
@@ -74,6 +74,9 @@ func RegisterXLSX(docs []domain.Doc, clients []domain.Client, today string) ([]b
 		set(6, issue)
 		set(7, due)
 		set(11, domain.DerivedStatus(d, today))
+		if d.FollowUpDate != nil {
+			set(13, *d.FollowUpDate)
+		}
 		if d.Type != "jobcard" {
 			set(8, float64(d.TotalCents)/100)
 			if d.Type == "invoice" {
@@ -87,13 +90,13 @@ func RegisterXLSX(docs []domain.Doc, clients []domain.Client, today string) ([]b
 		row++
 	}
 	f.SetCellStyle(sheet, "H2", "J"+itoa(row), money)
-	widths := []float64{16, 11, 26, 14, 34, 12, 16, 14, 14, 14, 15, 13}
+	widths := []float64{16, 11, 26, 14, 34, 12, 16, 14, 14, 14, 15, 13, 15}
 	for i, w := range widths {
 		col, _ := excelize.ColumnNumberToName(i + 1)
 		f.SetColWidth(sheet, col, col, w)
 	}
 	f.SetPanes(sheet, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"})
-	f.AutoFilter(sheet, "A1:L"+itoa(row-1), nil)
+	f.AutoFilter(sheet, "A1:M"+itoa(row-1), nil)
 	buf, err := f.WriteToBuffer()
 	if err != nil {
 		return nil, err

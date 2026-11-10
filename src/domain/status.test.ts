@@ -72,6 +72,7 @@ test('convertQuotationToInvoice creates draft invoice and marks quotation conver
     issueDate: '2026-11-01',
     dueDate: null,
     validUntil: '2026-11-15',
+    followUpDate: null,
     reference: 'Dell XPS 15',
     scope: 'Screen replacement',
     workItems: [{ title: 'Screen replace', detail: 'OLED panel' }],
@@ -98,6 +99,7 @@ test('convertQuotationToInvoice creates draft invoice and marks quotation conver
   assert.equal(invoice.number, null);
   assert.equal(invoice.quotationId, 'quo-1');
   assert.equal(invoice.clientId, 'cli-1');
+  assert.equal(invoice.followUpDate, null);
   assert.equal(invoice.status, 'draft');
   assert.equal(invoice.lines.length, 1);
   assert.equal(invoice.lines[0].totalCents, 450000);

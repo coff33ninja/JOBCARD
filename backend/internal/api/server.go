@@ -18,6 +18,7 @@ import (
 	"jobcard/internal/export"
 )
 
+// Server serves the JobCard API and optional static frontend.
 type Server struct {
 	Svc       *core.Service
 	Templates export.Templates // editable .docx layouts
@@ -29,17 +30,22 @@ type Server struct {
 	Token string
 }
 
+// Handler returns the secured HTTP handler for the API and optional frontend.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	const v = "/api/v1"
 	mux.HandleFunc("GET "+v+"/clients", s.listClients)
+	mux.HandleFunc("GET "+v+"/clients/archived", s.listArchivedClients)
 	mux.HandleFunc("POST "+v+"/clients", s.createClient)
 	mux.HandleFunc("PUT "+v+"/clients/{id}", s.updateClient)
+	mux.HandleFunc("DELETE "+v+"/clients/{id}", s.archiveClient)
+	mux.HandleFunc("POST "+v+"/clients/{id}/restore", s.restoreClient)
 	mux.HandleFunc("GET "+v+"/documents", s.listDocuments)
 	mux.HandleFunc("GET "+v+"/documents/{id}", s.getDocument)
 	mux.HandleFunc("POST "+v+"/documents", s.createDraft)
 	mux.HandleFunc("PUT "+v+"/documents/{id}", s.updateDraft)
 	mux.HandleFunc("POST "+v+"/documents/{id}/issue", s.issue)
+	mux.HandleFunc("POST "+v+"/documents/{id}/follow-up", s.setFollowUp)
 	mux.HandleFunc("POST "+v+"/documents/{id}/payments", s.addPayment)
 	mux.HandleFunc("POST "+v+"/documents/{id}/status", s.setStatus)
 	mux.HandleFunc("POST "+v+"/quotations/{id}/convert", s.convert)
@@ -48,10 +54,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+v+"/dashboard", s.dashboard)
 	mux.HandleFunc("GET "+v+"/settings", s.getSettings)
 	mux.HandleFunc("PUT "+v+"/settings", s.putSettings)
-	mux.HandleFunc("GET "+v+"/storage", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.Svc.Storage()) })
-	mux.HandleFunc("GET "+v+"/capabilities", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, export.DetectCapabilities()) })
+	mux.HandleFunc("GET "+v+"/storage", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, s.Svc.Storage()) })
+	mux.HandleFunc("GET "+v+"/capabilities", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, export.DetectCapabilities()) })
 	mux.HandleFunc("GET "+v+"/register/export.xlsx", s.registerXLSX)
-	mux.HandleFunc(v+"/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(v+"/", func(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, &core.AppError{Status: 404, Code: "NOT_FOUND", Message: "No such endpoint"})
 	})
 	if s.Static != "" {
@@ -105,7 +111,7 @@ func cors(next http.Handler) http.Handler {
 				if h == "localhost" || h == "127.0.0.1" || h == "[::1]" || h == "::1" {
 					w.Header().Set("Access-Control-Allow-Origin", o)
 					w.Header().Set("Vary", "Origin")
-					w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
+					w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
 					w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, X-Saved-Path")
 				}
@@ -130,8 +136,17 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 
 // ---------- clients ----------
 
-func (s *Server) listClients(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listClients(w http.ResponseWriter, _ *http.Request) {
 	v, err := s.Svc.ListClients()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, v)
+}
+
+func (s *Server) listArchivedClients(w http.ResponseWriter, _ *http.Request) {
+	v, err := s.Svc.ListArchivedClients()
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -160,6 +175,24 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := s.Svc.UpdateClient(r.PathValue("id"), in)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, c)
+}
+
+func (s *Server) archiveClient(w http.ResponseWriter, r *http.Request) {
+	c, err := s.Svc.ArchiveClient(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, c)
+}
+
+func (s *Server) restoreClient(w http.ResponseWriter, r *http.Request) {
+	c, err := s.Svc.RestoreClient(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -237,6 +270,36 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 		log.Printf("could not create client folder: %v", ferr) // numbering already committed; folder is retried on export
 	}
 	writeJSON(w, 200, d)
+}
+
+func (s *Server) setFollowUp(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FollowUpDate json.RawMessage `json:"followUpDate"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if body.FollowUpDate == nil {
+		writeErr(w, bad("followUpDate is required"))
+		return
+	}
+
+	var followUpDate *string
+	if string(body.FollowUpDate) != "null" {
+		var value string
+		if err := json.Unmarshal(body.FollowUpDate, &value); err != nil {
+			writeErr(w, bad("followUpDate must be a date or null"))
+			return
+		}
+		followUpDate = &value
+	}
+	d, err := s.Svc.SetFollowUpDate(r.PathValue("id"), followUpDate)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }
 
 func (s *Server) addPayment(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +389,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d)
 }
 
-func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getSettings(w http.ResponseWriter, _ *http.Request) {
 	st, err := s.Svc.GetSettings()
 	if err != nil {
 		writeErr(w, err)
@@ -353,7 +416,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) registerXLSX(w http.ResponseWriter, r *http.Request) {
+func (s *Server) registerXLSX(w http.ResponseWriter, _ *http.Request) {
 	data, name, err := s.Svc.RegisterSpreadsheet()
 	if err != nil {
 		writeErr(w, err)
@@ -368,7 +431,7 @@ func (s *Server) registerXLSX(w http.ResponseWriter, r *http.Request) {
 // auditWrites records every state-changing API call (method, path, status). Bodies are not stored.
 func (s *Server) auditWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method != http.MethodPost && r.Method != http.MethodPut) || !strings.HasPrefix(r.URL.Path, "/api/") {
+		if (r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodDelete) || !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)
 			return
 		}
