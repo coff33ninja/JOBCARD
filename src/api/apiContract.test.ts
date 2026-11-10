@@ -105,6 +105,9 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     assert.equal(issued.status, 'sent');
     assert.equal(issued.issueDate, '2026-11-08');
     assert.ok(issued.dueDate);
+    const settings = await api.getSettings();
+    assert.equal(issued.authorization.technicianSignature, settings.person);
+    assert.equal(issued.authorization.technicianDate, '2026-11-08');
 
     const reportFields = {
       intakeItems: [{ label: 'Primary storage', value: '1TB HDD' }],
@@ -120,6 +123,7 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
       type: 'invoice' as const,
       clientId,
       reference: 'Report contract device',
+      lines: [{ description: 'Report work', qty: 1, unitPriceCents: 1000, totalCents: 1000 }],
     }, reportFields));
     assert.deepEqual(JSON.parse(JSON.stringify(reportDraft)).intakeItems, reportFields.intakeItems);
     assert.deepEqual(JSON.parse(JSON.stringify(reportDraft)).diagnosticSections, reportFields.diagnosticSections);
@@ -131,6 +135,9 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     };
     const updatedReport = await api.updateDraft(reportDraft.id, reportUpdate);
     assert.deepEqual(JSON.parse(JSON.stringify(updatedReport)).intakeItems, reportUpdate.intakeItems);
+    const issuedReport = await api.issueDocument(reportDraft.id, '2026-11-09');
+    assert.equal(issuedReport.authorization.technicianSignature, 'Tech');
+    assert.equal(issuedReport.authorization.technicianDate, '2026-10-12');
 
     // 4. Immutability of issued document: cannot re-issue or edit
     await assert.rejects(

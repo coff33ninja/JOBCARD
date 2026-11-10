@@ -123,6 +123,8 @@ const SettingsSchema = z.object({
   taxRate: z.number(),
   defaultTermsDays: z.number(),
   quoteValidityDays: z.number(),
+  companyLogo: z.string().optional(),
+  technicianSignatureImage: z.string().optional(),
 });
 
 const StorageSchema = z.object({

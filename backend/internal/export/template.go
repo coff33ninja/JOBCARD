@@ -73,6 +73,7 @@ delete the file and it is recreated the next time a document is exported.
 Business (Settings)
   {{business.name}} {{business.person}} {{business.phone}} {{business.email}} {{business.location}}
   {{business.contact_line}}   person | phone | email (empty parts left out)
+  {{business.logo}}   optional uploaded PNG/JPEG company logo (body placeholder)
   {{bank.name}} {{bank.holder}} {{bank.account}} {{bank.branch}}
 
 Document
@@ -98,7 +99,8 @@ Repeating rows
   A paragraph containing {{diagnostic_section.text}} is repeated once per diagnostic section.
   A paragraph containing {{related}} is repeated once per linked document number (job cards).
   Authorization placeholders: {{authorization.technician_signature}}, {{authorization.technician_date}},
-  {{authorization.client_signature}}, and {{authorization.client_date}}.
+  {{authorization.technician_signature_image}}, {{authorization.client_signature}}, and {{authorization.client_date}}.
+  The technician signature image is an optional uploaded PNG/JPEG (body placeholder).
 
 A placeholder that is not recognised is left visible in the output so you can spot a typo.
 The built-in invoice template puts job intake and completed work before FINANCIAL BREAKDOWN,
@@ -109,6 +111,7 @@ then lists diagnostics and authorization after payment details. The financial br
 func DefaultTemplate(docType string) ([]byte, error) {
 	var x builder
 	f := func(label, key string) { x.field(label, "{{"+key+"}}") }
+	x.p(para{runs: []run{{text: "{{business.logo}}"}}, after: 40})
 	x.p(para{runs: []run{{text: "{{business.name}}", bold: true, size: 40, color: navy}}, after: 40})
 	x.p(para{runs: []run{{text: "{{business.contact_line}}", color: "444444"}}, after: 20})
 	x.p(para{runs: []run{{text: "{{business.location}}", color: "444444"}}, after: 120})
@@ -138,6 +141,7 @@ func DefaultTemplate(docType string) ([]byte, error) {
 	}
 	authorization := func() {
 		x.heading("AUTHORIZATION & SIGN-OFF")
+		x.p(para{runs: []run{{text: "{{authorization.technician_signature_image}}"}}, after: 40})
 		f("Technician signature", "authorization.technician_signature")
 		f("Technician date", "authorization.technician_date")
 		f("Client signature", "authorization.client_signature")
@@ -199,6 +203,7 @@ func DefaultTemplate(docType string) ([]byte, error) {
 		paymentDetails()
 		x.heading("TERMS & CLIENT ACCEPTANCE")
 		x.text("{{doc.terms}}")
+		authorization()
 		x.field("Client representative", "______________________________")
 		x.field("Acceptance signature / approval reference", "______________________________")
 		x.field("Acceptance date", "______________________________")

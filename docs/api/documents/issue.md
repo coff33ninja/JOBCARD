@@ -32,6 +32,7 @@ Optional body:
 - Assigns sequential formatted number (`JC-YYYY-NNN`, `QUO-YYYY-NNN`, `INV-YYYY-NNN`).
 - Year in number is derived from the issue date.
 - Computes `dueDate` (invoice) or `validUntil` (quotation) using settings terms.
+- Fills a blank technician name from the Settings `person` value and a blank technician date from the issue date; manually entered values are preserved.
 - Status transitions from `draft` to `sent` (or `open` for jobcard).
 - Number and issue date become permanently immutable.
 

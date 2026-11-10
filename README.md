@@ -190,6 +190,12 @@ Exports are filled from editable Word templates named `invoice.docx`, `quotation
 
 Open a template in Word, update the layout, fonts, colours, logo, wording, and keep the placeholders in place. A table row containing `{{line.*}}` repeats for each line item; a paragraph with `{{item.text}}` repeats for each work item; and paragraphs containing `{{intake_item.*}}` or `{{diagnostic_section.text}}` repeat for intake and diagnostic details. Line items also support an optional `{{line.detail}}` description, and sign-off fields use `{{authorization.*}}`. The built-in invoice template and browser print output start the financial breakdown on page 2, after the job intake and completed-work summary. Existing templates are never overwritten; add the new placeholders to an existing custom template yourself, or delete `invoice.docx` from the configured templates folder to let the app recreate the built-in version.
 
+### Document branding and technician sign-off
+
+Upload a company logo and technician-signature image in **Application Settings → Client Document Branding**. PNG and JPEG files up to 256 KiB each are supported, with dimensions up to 4096 × 4096 pixels and 16 megapixels. The images are saved with local settings and included in job cards, quotations, invoices, previews, and DOCX exports. Remove an image in Settings and save to clear it. For custom Word templates, add `{{business.logo}}` and `{{authorization.technician_signature_image}}` where the images should appear.
+
+When a document is issued, an empty technician name is filled from the Settings person field and an empty technician date is filled from the issue date. Existing technician sign-off text and date are preserved.
+
 ### MCP
 
 `jobcard.exe --mcp` runs the MCP server for Claude Desktop. See [`docs/mcp.md`](docs/mcp.md) for the config snippet, tool list, and safety rules. Drafts are created before permanent actions, `confirm=true` is required for irreversible operations, settings are not exposed through MCP, and an audit trail is kept.

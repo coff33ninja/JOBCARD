@@ -107,6 +107,8 @@ export interface Settings {
   taxRate: number; // 0 = non-VAT vendor
   defaultTermsDays: number;
   quoteValidityDays: number;
+  companyLogo?: string;
+  technicianSignatureImage?: string;
 }
 
 export interface Storage {

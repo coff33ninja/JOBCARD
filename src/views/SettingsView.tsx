@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import { Settings, Storage } from '../api/types.ts';
+import type { Settings, Storage } from '../api/types.ts';
 import { getApiClient } from '../api/factory.ts';
 import { getTodayISO } from '../domain/dates.ts';
+
+const MAX_BRANDING_IMAGE_BYTES = 256 * 1024;
 
 export const SettingsView: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -25,6 +27,61 @@ export const SettingsView: React.FC = () => {
   const [downloading, setDownloading] = useState(false);
 
   const api = getApiClient();
+
+  const handleBrandingImageSelect = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    field: keyof Pick<Settings, 'companyLogo' | 'technicianSignatureImage'>,
+    label: string,
+  ) => {
+    const files = event.currentTarget.files;
+    event.target.value = '';
+    if (files === null) return;
+    const file = files.item(0);
+    if (file === null) return;
+
+    if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+      setStatusMsg({ type: 'error', text: `${label} must be a PNG or JPEG image.` });
+      return;
+    }
+    if (file.size < 1 || file.size > MAX_BRANDING_IMAGE_BYTES) {
+      setStatusMsg({ type: 'error', text: `${label} must be between 1 byte and 256 KiB.` });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setStatusMsg({ type: 'error', text: `Could not read the selected ${label.toLowerCase()} file.` });
+    };
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith(`data:${file.type};base64,`)) {
+        setStatusMsg({ type: 'error', text: `Could not read the selected ${label.toLowerCase()} file.` });
+        return;
+      }
+
+      setSettings((current) => {
+        if (current === null) return current;
+        return field === 'companyLogo'
+          ? { ...current, companyLogo: dataUrl }
+          : { ...current, technicianSignatureImage: dataUrl };
+      });
+      setStatusMsg({ type: 'success', text: `${label} selected. Save Settings to persist the change.` });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBrandingImageRemove = (
+    field: keyof Pick<Settings, 'companyLogo' | 'technicianSignatureImage'>,
+    label: string,
+  ) => {
+    setSettings((current) => {
+      if (current === null) return current;
+      return field === 'companyLogo'
+        ? { ...current, companyLogo: undefined }
+        : { ...current, technicianSignatureImage: undefined };
+    });
+    setStatusMsg({ type: 'success', text: `${label} will be removed when you save settings.` });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -211,6 +268,51 @@ export const SettingsView: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md focus:bg-white text-xs"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Branding Assets */}
+        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Building2 className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-800">Client Document Branding</h2>
+          </div>
+          <p className="text-xs text-slate-500">
+            Add images used in job cards, quotations, and invoices. PNG and JPEG files up to 256 KiB each are supported, with dimensions up to 4096 × 4096 pixels and 16 megapixels.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            {([
+              { field: 'companyLogo', label: 'Company Logo', id: 'company-logo' },
+              { field: 'technicianSignatureImage', label: 'Technician Signature', id: 'technician-signature' },
+            ] as const).map(({ field, label, id }) => (
+              <div key={field} className="space-y-2">
+                <label htmlFor={id} className="block font-semibold text-slate-700">{label}</label>
+                <input
+                  id={id}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  aria-label={label}
+                  onChange={(event) => { handleBrandingImageSelect(event, field, label); }}
+                  className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-slate-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold"
+                />
+                {settings[field] ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={settings[field]}
+                      alt={`${label} preview`}
+                      className="max-h-20 max-w-48 rounded border border-slate-200 object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleBrandingImageRemove(field, label)}
+                      className="text-rose-700 hover:text-rose-900 font-semibold"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
 

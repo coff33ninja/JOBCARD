@@ -56,6 +56,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
       {/* Header */}
       <header className="border-b-2 border-slate-800 pb-5 mb-6">
+        {settings?.companyLogo ? (
+          <img
+            src={settings.companyLogo}
+            alt={`${businessName} logo`}
+            className="mb-3 max-h-16 max-w-48 object-contain"
+          />
+        ) : null}
         <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight uppercase">
           {businessName}
         </h1>
@@ -403,21 +410,28 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       )}
 
       {/* Authorization & Sign-off */}
-      {doc.type !== 'quotation' && (
-        <section className="mb-6 pt-4 border-t border-slate-200 text-xs break-inside-avoid">
-          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
-            AUTHORIZATION & SIGN-OFF
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <p className="font-semibold text-slate-700">Technician</p>
-              <p className="min-h-6 border-b border-slate-300 pb-1">
-                {doc.authorization?.technicianSignature || ''}
-              </p>
-              <p className="text-[11px] text-slate-500">
-                Date: {doc.authorization?.technicianDate || '________________'}
-              </p>
-            </div>
+      <section className="mb-6 pt-4 border-t border-slate-200 text-xs break-inside-avoid">
+        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
+          AUTHORIZATION & SIGN-OFF
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <p className="font-semibold text-slate-700">Technician</p>
+            {settings?.technicianSignatureImage ? (
+              <img
+                src={settings.technicianSignatureImage}
+                alt="Technician signature"
+                className="max-h-12 max-w-40 object-contain object-left"
+              />
+            ) : null}
+            <p className="min-h-6 border-b border-slate-300 pb-1">
+              {doc.authorization?.technicianSignature || ''}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Date: {doc.authorization?.technicianDate || '________________'}
+            </p>
+          </div>
+          {doc.type !== 'quotation' && (
             <div className="space-y-2">
               <p className="font-semibold text-slate-700">Client</p>
               <p className="min-h-6 border-b border-slate-300 pb-1">
@@ -427,9 +441,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 Date: {doc.authorization?.clientDate || '________________'}
               </p>
             </div>
-          </div>
-        </section>
-      )}
+          )}
+        </div>
+      </section>
 
       {/* Section 6: Terms & Client Acceptance for Quotations */}
       {doc.type === 'quotation' && (

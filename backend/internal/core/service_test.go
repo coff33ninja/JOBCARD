@@ -115,6 +115,47 @@ func TestDocumentIntakeAndDiagnosticDataPersists(t *testing.T) {
 	}
 }
 
+func TestIssueDocumentFillsMissingTechnicianSignOff(t *testing.T) {
+	s := newTestService(t)
+	client := mustClient(t, s)
+	settings, err := s.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Person = "Technician Name"
+	if _, err := s.UpdateSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+
+	unfilled := draft(t, s, "jobcard", client.ID, 0)
+	issued, err := s.IssueDocument(unfilled.ID, "2026-11-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issued.Authorization.TechnicianSignature != "Technician Name" || issued.Authorization.TechnicianDate != "2026-11-09" {
+		t.Fatalf("issue should fill missing technician name/date from settings and issue date: %+v", issued.Authorization)
+	}
+
+	signature, date := "Manual Technician", "2026-11-07"
+	manual, err := s.CreateDraft(DraftInput{
+		Type: str("jobcard"), ClientID: str(client.ID), Reference: str("Manual sign-off"),
+		Authorization: Opt[domain.Authorization]{Set: true, Val: &domain.Authorization{
+			TechnicianSignature: signature,
+			TechnicianDate:      date,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuedManual, err := s.IssueDocument(manual.ID, "2026-11-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issuedManual.Authorization.TechnicianSignature != signature || issuedManual.Authorization.TechnicianDate != date {
+		t.Fatalf("issue must preserve manually provided technician sign-off: %+v", issuedManual.Authorization)
+	}
+}
+
 func TestDocumentReportColumnsMigrateLegacyDatabase(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })

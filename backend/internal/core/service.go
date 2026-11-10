@@ -18,6 +18,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"jobcard/internal/branding"
 	"jobcard/internal/domain"
 )
 
@@ -361,6 +362,12 @@ func (s *Service) UpdateSettings(in domain.Settings) (domain.Settings, error) {
 	}
 	if in.QuoteValidityDays < 1 || in.QuoteValidityDays > 365 {
 		f["quoteValidityDays"] = "Must be between 1 and 365"
+	}
+	if _, err := branding.DecodeDataURL(in.CompanyLogo); err != nil {
+		f["companyLogo"] = err.Error()
+	}
+	if _, err := branding.DecodeDataURL(in.TechnicianSignatureImage); err != nil {
+		f["technicianSignatureImage"] = err.Error()
 	}
 	if len(f) > 0 {
 		return in, invalid("Invalid settings", f)
@@ -1256,6 +1263,12 @@ func (s *Service) IssueDocument(id, issueDate string) (domain.Doc, error) {
 		return d, err
 	}
 	d.Number, d.IssueDate = &num, &issueDate
+	if strings.TrimSpace(d.Authorization.TechnicianSignature) == "" {
+		d.Authorization.TechnicianSignature = strings.TrimSpace(st.Person)
+	}
+	if strings.TrimSpace(d.Authorization.TechnicianDate) == "" {
+		d.Authorization.TechnicianDate = issueDate
+	}
 	switch d.Type {
 	case "invoice":
 		due := domain.AddDays(issueDate, st.DefaultTermsDays)

@@ -501,6 +501,11 @@ export class MockApi implements ApiClient {
       issueDate: dateToUse,
       dueDate,
       validUntil,
+      authorization: {
+        ...doc.authorization,
+        technicianSignature: doc.authorization.technicianSignature.trim() || this.settings.person,
+        technicianDate: doc.authorization.technicianDate.trim() || dateToUse,
+      },
       status,
       updatedAt: nowIso,
     };

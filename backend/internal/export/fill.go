@@ -174,10 +174,13 @@ func fillAll(x string, vals map[string]string, unknown map[string]bool) string {
 	return reRun.ReplaceAllStringFunc(x, func(r string) string { return fillRun(r, vals, unknown) })
 }
 
-func renderPart(name, x string, c Ctx, vals map[string]string, unknown map[string]bool) string {
+func renderPart(name, x string, c Ctx, vals map[string]string, unknown map[string]bool, images []embeddedImage) string {
 	x = reParagraph.ReplaceAllStringFunc(x, normalizeParagraph)
 	ignore := map[string]bool{} // keys left over in repeated fragments are resolved by the final pass
 	if name == "word/document.xml" {
+		x = reParagraph.ReplaceAllStringFunc(x, func(paragraph string) string {
+			return replaceImagePlaceholders(paragraph, images)
+		})
 		// one table row per line item
 		x = reRow.ReplaceAllStringFunc(x, func(row string) string {
 			if !strings.Contains(row, "{{line.") {
@@ -252,28 +255,73 @@ func Render(template []byte, c Ctx) ([]byte, []string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("template is not a valid .docx: %w", err)
 	}
+	parts := make(map[string][]byte, len(zr.File)+2)
+	order := make([]string, 0, len(zr.File)+2)
+	for _, file := range zr.File {
+		reader, err := file.Open()
+		if err != nil {
+			return nil, nil, err
+		}
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		parts[file.Name] = data
+		order = append(order, file.Name)
+	}
+	images, err := brandingImages(c.Settings, parts)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(images) > 0 {
+		const relationshipsPath = "word/_rels/document.xml.rels"
+		const contentTypesPath = "[Content_Types].xml"
+		relationships, err := addImageRelationships(parts[relationshipsPath], images)
+		if err != nil {
+			return nil, nil, err
+		}
+		parts[relationshipsPath] = relationships
+		if _, exists := parts[relationshipsPath]; exists {
+			found := false
+			for _, name := range order {
+				if name == relationshipsPath {
+					found = true
+					break
+				}
+			}
+			if !found {
+				order = append(order, relationshipsPath)
+			}
+		}
+		contentTypes, ok := parts[contentTypesPath]
+		if !ok {
+			return nil, nil, fmt.Errorf("template has no [Content_Types].xml")
+		}
+		parts[contentTypesPath], err = addImageContentTypes(contentTypes, images)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, image := range images {
+			path := "word/" + image.target
+			parts[path] = image.data
+			order = append(order, path)
+		}
+	}
 	vals := c.Values()
 	unknown := map[string]bool{}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	hasDoc := false
-	for _, f := range zr.File {
-		rc, err := f.Open()
-		if err != nil {
-			return nil, nil, err
-		}
-		data, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			return nil, nil, err
-		}
-		if rePart.MatchString(f.Name) {
-			if f.Name == "word/document.xml" {
+	for _, name := range order {
+		data := parts[name]
+		if rePart.MatchString(name) {
+			if name == "word/document.xml" {
 				hasDoc = true
 			}
-			data = []byte(renderPart(f.Name, string(data), c, vals, unknown))
+			data = []byte(renderPart(name, string(data), c, vals, unknown, images))
 		}
-		w, err := zw.CreateHeader(&zip.FileHeader{Name: f.Name, Method: zip.Deflate, Modified: time.Now()})
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: time.Now()})
 		if err != nil {
 			return nil, nil, err
 		}

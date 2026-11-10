@@ -1,6 +1,6 @@
 # PUT /settings
 
-Update business identity, banking details, and invoice terms configuration.
+Update business identity, banking details, invoice terms, and optional document branding images.
 
 ## ApiClient method
 `updateSettings`
@@ -22,6 +22,8 @@ Body:
 - `taxRate` (number, required, e.g. 0 or 0.15)
 - `defaultTermsDays` (number, required, >= 1)
 - `quoteValidityDays` (number, required, >= 1)
+- `companyLogo` (string, optional): PNG or JPEG data URL, maximum 256 KiB, 4096 pixels per side, and 16 megapixels; omit or send an empty string to remove it.
+- `technicianSignatureImage` (string, optional): PNG or JPEG data URL, maximum 256 KiB, 4096 pixels per side, and 16 megapixels; omit or send an empty string to remove it.
 
 ## Response
 - Status: `200 OK`
@@ -34,7 +36,7 @@ Body:
 | 400 | `VALIDATION_FAILED` | Missing or invalid configuration fields |
 
 ## Rules and side effects
-Saves new settings in configuration storage. Future issued documents and preview templates use these updated values.
+Saves new settings in configuration storage. Future issued documents and previews use these values. Empty technician name/date fields are filled at issue time from `person` and the issue date; existing values are preserved.
 
 ## Example
 Request: `PUT /api/v1/settings`

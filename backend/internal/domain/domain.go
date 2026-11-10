@@ -103,18 +103,20 @@ type DocumentRevision struct {
 }
 
 type Settings struct {
-	BusinessName      string  `json:"businessName"`
-	Person            string  `json:"person"`
-	Phone             string  `json:"phone"`
-	Email             string  `json:"email"`
-	Location          string  `json:"location"`
-	BankName          string  `json:"bankName"`
-	AccountHolder     string  `json:"accountHolder"`
-	AccountNumber     string  `json:"accountNumber"`
-	BranchCode        string  `json:"branchCode"`
-	TaxRate           float64 `json:"taxRate"`
-	DefaultTermsDays  int     `json:"defaultTermsDays"`
-	QuoteValidityDays int     `json:"quoteValidityDays"`
+	BusinessName             string  `json:"businessName"`
+	Person                   string  `json:"person"`
+	Phone                    string  `json:"phone"`
+	Email                    string  `json:"email"`
+	Location                 string  `json:"location"`
+	BankName                 string  `json:"bankName"`
+	AccountHolder            string  `json:"accountHolder"`
+	AccountNumber            string  `json:"accountNumber"`
+	BranchCode               string  `json:"branchCode"`
+	TaxRate                  float64 `json:"taxRate"`
+	DefaultTermsDays         int     `json:"defaultTermsDays"`
+	QuoteValidityDays        int     `json:"quoteValidityDays"`
+	CompanyLogo              string  `json:"companyLogo,omitempty"`
+	TechnicianSignatureImage string  `json:"technicianSignatureImage,omitempty"`
 }
 
 type Storage struct {
