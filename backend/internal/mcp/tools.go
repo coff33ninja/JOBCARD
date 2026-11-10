@@ -98,6 +98,15 @@ func clientProps() map[string]any {
 	}
 }
 
+func draftCreateProps() map[string]any {
+	props := withProps(draftProps(), map[string]any{
+		"type":      enum("Document type", "quotation", "invoice", "jobcard"),
+		"clientId":  str("Existing client ID (use this or newClient)"),
+		"newClient": obj(clientProps(), "name"),
+	})
+	return props
+}
+
 // ---------- tool table (names match mcpTool in src/api/endpoints.ts) ----------
 
 func decode(args json.RawMessage, v any) error {
@@ -207,17 +216,34 @@ func (s *Server) tools() []tool {
 				}
 				return svc.GetDocument(id.ID)
 			}},
-		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card, including intake inventory, diagnostics, line details and authorization fields. Drafts have no number yet and can be edited.", Write: true,
-			Schema: obj(withProps(draftProps(), map[string]any{
-				"type":     enum("Document type", "quotation", "invoice", "jobcard"),
-				"clientId": str("Client ID (use list_clients or create_client first)"),
-			}), "type", "clientId", "reference"),
+		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card. Supply either an existing clientId or newClient details to create and link a client in the same operation. Drafts have no number yet and can be edited.", Write: true,
+			Schema: func() map[string]any {
+				schema := obj(draftCreateProps(), "type", "reference")
+				schema["oneOf"] = []any{
+					map[string]any{"required": []string{"clientId"}, "not": map[string]any{"required": []string{"newClient"}}},
+					map[string]any{"required": []string{"newClient"}, "not": map[string]any{"required": []string{"clientId"}}},
+				}
+				return schema
+			}(),
 			Run: func(a json.RawMessage) (any, error) {
-				var in core.DraftInput
+				var in struct {
+					core.DraftInput
+					NewClient *core.ClientInput `json:"newClient,omitempty"`
+				}
 				if err := decode(a, &in); err != nil {
 					return nil, err
 				}
-				return svc.CreateDraft(in)
+				if in.NewClient != nil {
+					if in.ClientID.Val != nil {
+						return nil, &core.AppError{
+							Status: 400, Code: "VALIDATION_FAILED",
+							Message: "Provide either clientId or newClient, not both",
+							Fields:  map[string]string{"clientId": "Cannot be combined with newClient"},
+						}
+					}
+					return svc.CreateDraftWithClient(in.DraftInput, *in.NewClient)
+				}
+				return svc.CreateDraft(in.DraftInput)
 			}},
 		{Name: "update_draft", Description: "Edit a draft, including intake inventory, diagnostics, line details and authorization fields. Only fields you send change; arrays and authorization objects are replaced as a whole. Issued documents cannot be edited.", Write: true,
 			Schema: obj(withProps(draftProps(), map[string]any{"id": str("Document ID"), "clientId": str("Client ID")}), "id"),

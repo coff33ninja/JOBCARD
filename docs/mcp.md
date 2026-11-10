@@ -23,7 +23,26 @@ Restart Claude Desktop. Logs are written to `%APPDATA%\JobCardLauncher\jobcard.l
 
 Names match `mcpTool` in `src/api/endpoints.ts`. Money is always integer cents; the server computes totals.
 
+`create_draft` accepts either an existing `clientId` or `newClient` details (`name` required; `contact`, `phone`, `email`, `address`, and `notes` optional). It creates the new client and draft in one database transaction, so an invalid draft does not leave an orphan client. The in-app editor also supports adding a client from its document form using “+ New Client”.
+
 `create_draft` and `update_draft` support the same report fields as the editor: `intakeItems` (`label`, `value`), `diagnosticSections` (`title`, `status`, `details`), `authorization` (`technicianSignature`, `technicianDate`, `clientSignature`, `clientDate`), and the optional `lines[].detail`. When updating, send complete replacement arrays and a complete authorization object. `get_document` returns these fields, and `export_document` includes them using the built-in template or matching placeholders in a custom template.
+
+Example:
+
+```json
+{
+  "type": "invoice",
+  "reference": "Example laptop repair",
+  "newClient": {
+    "name": "Example Client",
+    "phone": "000 000 0000",
+    "email": "client@example.test"
+  },
+  "lines": [
+    { "description": "Replacement part", "detail": "Example specification", "qty": 1, "unitPriceCents": 100000 }
+  ]
+}
+```
 
 | Tool | What it does | Needs `confirm=true` |
 |---|---|---|

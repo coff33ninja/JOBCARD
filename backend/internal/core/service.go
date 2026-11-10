@@ -393,6 +393,10 @@ func getActiveClient(q queryer, id string) (domain.Client, error) {
 }
 
 func (s *Service) CreateClient(in ClientInput) (domain.Client, error) {
+	return createClient(s.DB, in)
+}
+
+func createClient(q queryer, in ClientInput) (domain.Client, error) {
 	name := strings.TrimSpace(in.Name.Or(""))
 	if name == "" {
 		return domain.Client{}, invalid("Client name is required", map[string]string{"name": "Name is required"})
@@ -403,7 +407,7 @@ func (s *Service) CreateClient(in ClientInput) (domain.Client, error) {
 		Email: strings.TrimSpace(in.Email.Or("")), Address: strings.TrimSpace(in.Address.Or("")),
 		Notes: strings.TrimSpace(in.Notes.Or("")),
 	}
-	_, err := s.DB.Exec(`INSERT INTO clients(id,name,contact,phone,email,address,notes,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+	_, err := q.Exec(`INSERT INTO clients(id,name,contact,phone,email,address,notes,created_at) VALUES(?,?,?,?,?,?,?,?)`,
 		c.ID, c.Name, c.Contact, c.Phone, c.Email, c.Address, c.Notes, nowISO())
 	return c, err
 }
@@ -739,6 +743,36 @@ func (s *Service) checkLink(q queryer, field string, id *string, wantType string
 }
 
 func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
+	d, err := createDraft(s, s.DB, in)
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	return s.GetDocument(d.ID)
+}
+
+func (s *Service) CreateDraftWithClient(in DraftInput, clientInput ClientInput) (domain.Doc, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+
+	client, err := createClient(tx, clientInput)
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	in.ClientID = Opt[string]{Set: true, Val: &client.ID}
+	doc, err := createDraft(s, tx, in)
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Doc{}, err
+	}
+	return s.GetDocument(doc.ID)
+}
+
+func createDraft(s *Service, q queryer, in DraftInput) (domain.Doc, error) {
 	typ := in.Type.Or("")
 	ref := strings.TrimSpace(in.Reference.Or(""))
 	cid := in.ClientID.Or("")
@@ -755,7 +789,7 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 	if len(f) > 0 {
 		return domain.Doc{}, invalid("type, clientId and reference are required", f)
 	}
-	if _, err := getActiveClient(s.DB, cid); err != nil {
+	if _, err := getActiveClient(q, cid); err != nil {
 		var ae *AppError
 		if errors.As(err, &ae) && ae.Status == 404 {
 			return domain.Doc{}, invalid("Client not found", map[string]string{"clientId": "Client not found"})
@@ -769,10 +803,10 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 	if in.QuotationID.Val != nil {
 		qu = in.QuotationID.Val
 	}
-	if err := s.checkLink(s.DB, "jobCardId", jc, "jobcard"); err != nil {
+	if err := s.checkLink(q, "jobCardId", jc, "jobcard"); err != nil {
 		return domain.Doc{}, err
 	}
-	if err := s.checkLink(s.DB, "quotationId", qu, "quotation"); err != nil {
+	if err := s.checkLink(q, "quotationId", qu, "quotation"); err != nil {
 		return domain.Doc{}, err
 	}
 	lines := in.Lines.Or(nil)
@@ -780,7 +814,7 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 		return domain.Doc{}, err
 	}
 	lines = domain.NormalizeLines(lines)
-	st, err := s.GetSettings()
+	st, err := getSettings(q)
 	if err != nil {
 		return domain.Doc{}, err
 	}
@@ -798,10 +832,10 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 		Terms: in.Terms.Or(""), Exclusions: in.Exclusions.Or(""), Turnaround: in.Turnaround.Or(""), Notes: in.Notes.Or(""),
 		CreatedAt: now, UpdatedAt: now,
 	}
-	if err := insertDoc(s.DB, &d); err != nil {
+	if err := insertDoc(q, &d); err != nil {
 		return domain.Doc{}, err
 	}
-	return s.GetDocument(d.ID)
+	return d, nil
 }
 
 func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {

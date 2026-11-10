@@ -158,6 +158,25 @@ func TestDocumentReportDecodeErrorsAreReturned(t *testing.T) {
 	}
 }
 
+func TestCreateDraftWithClientRollsBackClientWhenDraftIsInvalid(t *testing.T) {
+	s := newTestService(t)
+	clientName := "Invalid Draft Client"
+	_, err := s.CreateDraftWithClient(
+		DraftInput{Type: str("invoice")},
+		ClientInput{Name: str(clientName)},
+	)
+	if err == nil {
+		t.Fatal("expected invalid draft error")
+	}
+	clients, err := s.ListClients()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clients) != 0 {
+		t.Fatalf("client creation should roll back with invalid draft, got %+v", clients)
+	}
+}
+
 func TestNumberingContinuesAndRestartsPerYear(t *testing.T) {
 	s := newTestService(t)
 	c := mustClient(t, s)

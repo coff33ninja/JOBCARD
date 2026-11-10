@@ -127,21 +127,21 @@ func TestDraftToolsExposeAndPersistReportFields(t *testing.T) {
 		if _, ok := lines["detail"]; !ok {
 			t.Errorf("%s line schema is missing detail", name)
 		}
+		if name == "create_draft" {
+			if _, ok := properties["newClient"]; !ok {
+				t.Error("create_draft input schema is missing newClient")
+			}
+			if _, ok := tool["inputSchema"].(map[string]any)["oneOf"]; !ok {
+				t.Error("create_draft input schema must require exactly one client option")
+			}
+		}
 	}
 
-	text, isErr := call(t, s, 2, "create_client", map[string]any{"name": "Report Client"})
-	if isErr {
-		t.Fatal(text)
-	}
-	var client struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(text), &client); err != nil {
-		t.Fatal(err)
-	}
-
-	text, isErr = call(t, s, 3, "create_draft", map[string]any{
-		"type": "invoice", "clientId": client.ID, "reference": "Laptop",
+	text, isErr := call(t, s, 2, "create_draft", map[string]any{
+		"type": "invoice", "reference": "Laptop",
+		"newClient": map[string]string{
+			"name": "Report Client", "contact": "Example Contact", "phone": "000",
+		},
 		"intakeItems":        []map[string]string{{"label": "Charger", "value": "Received"}},
 		"diagnosticSections": []map[string]string{{"title": "Battery test", "status": "FAILED", "details": "No charge"}},
 		"authorization":      map[string]string{"technicianSignature": "Tech", "technicianDate": "2026-11-10", "clientSignature": "Client", "clientDate": "2026-11-10"},
@@ -151,13 +151,17 @@ func TestDraftToolsExposeAndPersistReportFields(t *testing.T) {
 		t.Fatal(text)
 	}
 	var document struct {
-		ID string `json:"id"`
+		ID       string `json:"id"`
+		ClientID string `json:"clientId"`
 	}
 	if err := json.Unmarshal([]byte(text), &document); err != nil {
 		t.Fatal(err)
 	}
+	if document.ClientID == "" {
+		t.Fatalf("newly created draft has no linked client: %s", text)
+	}
 
-	text, isErr = call(t, s, 4, "update_draft", map[string]any{
+	text, isErr = call(t, s, 3, "update_draft", map[string]any{
 		"id":          document.ID,
 		"intakeItems": []map[string]string{{"label": "Power adapter", "value": "Included"}},
 	})
@@ -168,10 +172,34 @@ func TestDraftToolsExposeAndPersistReportFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client, err := s.Svc.GetClient(got.ClientID)
+	if err != nil || client.Name != "Report Client" || client.Contact != "Example Contact" || client.Phone != "000" {
+		t.Fatalf("inline client was not created and linked: %+v, %v", client, err)
+	}
 	if len(got.IntakeItems) != 1 || got.IntakeItems[0].Label != "Power adapter" ||
 		len(got.DiagnosticSections) != 1 || got.DiagnosticSections[0].Details != "No charge" ||
 		got.Authorization.TechnicianSignature != "Tech" || len(got.Lines) != 1 || got.Lines[0].Detail != "OEM replacement" {
 		t.Fatalf("MCP report fields were not persisted as expected: %+v", got)
+	}
+
+	if text, isErr = call(t, s, 4, "create_draft", map[string]any{
+		"type": "invoice", "clientId": got.ClientID, "newClient": map[string]string{"name": "Duplicate"},
+		"reference": "Conflicting client choices",
+	}); !isErr || !strings.Contains(text, "Provide either clientId or newClient") {
+		t.Fatalf("supplying both client options should fail: %s, error %v", text, isErr)
+	}
+
+	if text, isErr = call(t, s, 5, "create_draft", map[string]any{
+		"type": "invoice", "newClient": map[string]string{"name": "Rolled Back Client"},
+	}); !isErr {
+		t.Fatalf("draft without reference should fail: %s", text)
+	}
+	clients, err := s.Svc.ListClients()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clients) != 1 || clients[0].ID != got.ClientID {
+		t.Fatalf("invalid draft left an orphan client: %+v", clients)
 	}
 }
 
