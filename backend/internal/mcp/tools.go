@@ -207,6 +207,8 @@ func (s *Server) tools() []tool {
 				}
 				return docs, nil
 			}},
+		{Name: "list_archived_documents", Description: "List archived drafts. Archived drafts are excluded from the active register and dashboard totals.", Schema: obj(map[string]any{}),
+			Run: func(_ json.RawMessage) (any, error) { return svc.ListArchivedDocuments() }},
 		{Name: "get_document", Description: "Get one document with its lines, payments and client folder path.",
 			Schema: obj(map[string]any{"id": str("Document ID")}, "id"),
 			Run: func(a json.RawMessage) (any, error) {
@@ -257,6 +259,86 @@ func (s *Server) tools() []tool {
 					return nil, err
 				}
 				return svc.UpdateDraft(id.ID, in)
+			}},
+		{Name: "archive_draft", Description: "Archive an unissued draft so it is preserved for reference but removed from the active register. Requires explicit approval and confirm=true.", Write: true,
+			Schema: obj(map[string]any{"id": str("Draft ID"), "confirm": confirmProp}, "id", "confirm"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ID      string `json:"id"`
+					Confirm bool   `json:"confirm"`
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				if err := needConfirm(in.Confirm, "Archiving a draft"); err != nil {
+					return nil, err
+				}
+				return svc.ArchiveDraft(in.ID)
+			}},
+		{Name: "restore_draft", Description: "Restore an archived draft to the active register. Requires explicit approval and confirm=true.", Write: true,
+			Schema: obj(map[string]any{"id": str("Draft ID"), "confirm": confirmProp}, "id", "confirm"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ID      string `json:"id"`
+					Confirm bool   `json:"confirm"`
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				if err := needConfirm(in.Confirm, "Restoring a draft"); err != nil {
+					return nil, err
+				}
+				return svc.RestoreDraft(in.ID)
+			}},
+		{Name: "delete_draft", Description: "PERMANENT. Delete an unissued draft. Issued documents cannot be deleted, and linked drafts cannot be removed. Requires explicit approval and confirm=true.", Write: true,
+			Schema: obj(map[string]any{"id": str("Draft ID"), "confirm": confirmProp}, "id", "confirm"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ID      string `json:"id"`
+					Confirm bool   `json:"confirm"`
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				if err := needConfirm(in.Confirm, "Permanently deleting a draft"); err != nil {
+					return nil, err
+				}
+				return svc.DeleteDraft(in.ID)
+			}},
+		{Name: "create_replacement_quotation", Description: "Create a replacement draft from an open issued quotation. The source remains open until the replacement is issued, when the source is marked cancelled and retained for reference.", Write: true,
+			Schema: obj(map[string]any{"id": str("Source quotation ID")}, "id"),
+			Run: func(a json.RawMessage) (any, error) {
+				var id idArgs
+				if err := decode(a, &id); err != nil {
+					return nil, err
+				}
+				return svc.CreateReplacementQuotation(id.ID)
+			}},
+		{Name: "update_quotation_revision", Description: "PERMANENT. Revise fields in an open issued quotation in place. Its number and status stay unchanged; the previous version is saved in revision history. Requires explicit approval and confirm=true.", Write: true,
+			Schema: obj(withProps(draftProps(), map[string]any{
+				"id": str("Issued quotation ID"), "clientId": str("Client ID"), "confirm": confirmProp,
+			}), "id", "confirm"),
+			Run: func(a json.RawMessage) (any, error) {
+				var in struct {
+					ID      string `json:"id"`
+					Confirm bool   `json:"confirm"`
+					core.DraftInput
+				}
+				if err := decode(a, &in); err != nil {
+					return nil, err
+				}
+				if err := needConfirm(in.Confirm, "Revising an issued quotation"); err != nil {
+					return nil, err
+				}
+				return svc.UpdateIssuedQuotation(in.ID, in.DraftInput, true)
+			}},
+		{Name: "list_quotation_revisions", Description: "Read the saved pre-edit versions of a quotation, newest first.", Schema: obj(map[string]any{"id": str("Quotation ID")}, "id"),
+			Run: func(a json.RawMessage) (any, error) {
+				var id idArgs
+				if err := decode(a, &id); err != nil {
+					return nil, err
+				}
+				return svc.ListQuotationRevisions(id.ID)
 			}},
 		{Name: "issue_document", Description: "PERMANENT. Issue a draft: assigns its permanent number (JC-/QUO-/INV-), sets dates, locks it. Requires user approval and confirm=true.", Write: true,
 			Schema: obj(map[string]any{"id": str("Document ID"), "issueDate": str("YYYY-MM-DD, defaults to today"), "confirm": confirmProp}, "id", "confirm"),

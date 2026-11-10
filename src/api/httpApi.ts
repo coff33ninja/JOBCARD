@@ -15,6 +15,7 @@ import {
   DashboardSummary,
   ApiError,
   ISODate,
+  DocumentRevision,
 } from './types.ts';
 
 // Zod schemas for runtime response validation
@@ -78,6 +79,8 @@ const DocSchema = z.object({
   dueDate: z.string().nullable(),
   validUntil: z.string().nullable(),
   followUpDate: z.string().nullable(),
+  archivedAt: z.string().nullable().optional(),
+  revisionOfQuotationId: z.string().nullable().optional(),
   reference: z.string(),
   scope: z.string(),
   workItems: z.array(WorkItemSchema),
@@ -98,6 +101,13 @@ const DocSchema = z.object({
   folderPath: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+const DocumentRevisionSchema = z.object({
+  id: z.string(),
+  documentId: z.string(),
+  recordedAt: z.string(),
+  snapshot: DocSchema,
 });
 
 const SettingsSchema = z.object({
@@ -251,6 +261,10 @@ export class HttpApi implements ApiClient {
     return this.request(`/documents${query}`, { method: 'GET' }, z.array(DocSchema));
   }
 
+  async listArchivedDocuments(): Promise<Doc[]> {
+    return this.request('/documents/archived', { method: 'GET' }, z.array(DocSchema));
+  }
+
   async getDocument(id: string): Promise<Doc> {
     return this.request(`/documents/${id}`, { method: 'GET' }, DocSchema);
   }
@@ -267,6 +281,40 @@ export class HttpApi implements ApiClient {
       method: 'PUT',
       body: JSON.stringify(input),
     }, DocSchema);
+  }
+
+  async archiveDraft(id: string): Promise<Doc> {
+    return this.request(`/documents/${id}/archive`, { method: 'POST' }, DocSchema);
+  }
+
+  async restoreDraft(id: string): Promise<Doc> {
+    return this.request(`/documents/${id}/restore`, { method: 'POST' }, DocSchema);
+  }
+
+  async deleteDraft(id: string, confirm: boolean): Promise<Doc> {
+    return this.request(`/documents/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm }),
+    }, DocSchema);
+  }
+
+  async createReplacementQuotation(id: string): Promise<Doc> {
+    return this.request(`/quotations/${id}/replacement`, { method: 'POST' }, DocSchema);
+  }
+
+  async updateIssuedQuotation(
+    id: string,
+    input: Partial<CreateDraftInput>,
+    confirm: boolean
+  ): Promise<Doc> {
+    return this.request(`/quotations/${id}/revision`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...input, confirm }),
+    }, DocSchema);
+  }
+
+  async listQuotationRevisions(id: string): Promise<DocumentRevision[]> {
+    return this.request(`/quotations/${id}/revisions`, { method: 'GET' }, z.array(DocumentRevisionSchema));
   }
 
   async issueDocument(id: string, issueDate?: ISODate): Promise<Doc> {

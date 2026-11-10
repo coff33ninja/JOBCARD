@@ -12,7 +12,7 @@ import {
   Clock,
   Printer,
 } from 'lucide-react';
-import { Doc, Client, Settings, Capabilities } from '../api/types.ts';
+import { Doc, Client, Settings, Capabilities, DocumentRevision } from '../api/types.ts';
 import { DocumentPreview } from '../components/DocumentPreview.tsx';
 import { ExportMenu } from '../components/ExportMenu.tsx';
 import { PaymentModal } from '../components/PaymentModal.tsx';
@@ -48,6 +48,8 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
   const [linkedQuote, setLinkedQuote] = useState<Doc | null>(null);
   const [linkedJobCard, setLinkedJobCard] = useState<Doc | null>(null);
   const [linkedInvoice, setLinkedInvoice] = useState<Doc | null>(null);
+  const [revisionSource, setRevisionSource] = useState<Doc | null>(null);
+  const [quotationRevisions, setQuotationRevisions] = useState<DocumentRevision[]>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
@@ -85,6 +87,8 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
       setDoc(fetchedDoc);
       setSettings(fetchedSettings);
       setCapabilities(fetchedCaps);
+      setRevisionSource(null);
+      setQuotationRevisions([]);
 
       if (fetchedDoc.clientId) {
         const clients = await api.listClients();
@@ -101,6 +105,14 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
         }
       }
 
+      if (fetchedDoc.revisionOfQuotationId) {
+        try {
+          setRevisionSource(await api.getDocument(fetchedDoc.revisionOfQuotationId));
+        } catch {
+          setRevisionSource(null);
+        }
+      }
+
       if (fetchedDoc.jobCardId) {
         try {
           const jc = await api.getDocument(fetchedDoc.jobCardId);
@@ -112,9 +124,13 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
 
       // If quotation, look for converted invoice
       if (fetchedDoc.type === 'quotation') {
-        const allDocs = await api.listDocuments({ type: 'invoice' });
+        const [allDocs, revisions] = await Promise.all([
+          api.listDocuments({ type: 'invoice' }),
+          api.listQuotationRevisions(fetchedDoc.id),
+        ]);
         const linkedInv = allDocs.find((d) => d.quotationId === fetchedDoc.id);
         if (linkedInv) setLinkedInvoice(linkedInv);
+        setQuotationRevisions(revisions);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load document');
@@ -149,6 +165,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
     );
   }
 
+  const isArchivedDraft = Boolean(doc.archivedAt);
   const isDraft = doc.number === null || doc.status === 'draft';
   const totalPaid = (doc.payments || []).reduce((acc, p) => acc + p.amountCents, 0);
   const balanceCents = doc.totalCents - totalPaid;
@@ -166,19 +183,100 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
     setConfirmModal({
       isOpen: true,
       title: 'Issue Document',
-      message: 'Number can\'t be changed after issuing. Once issued, a sequential number and issue date will be permanently locked.',
+      message: doc.revisionOfQuotationId
+        ? 'Issuing this replacement assigns a permanent number and cancels the original quotation. The original remains preserved for reference.'
+        : 'Number can\'t be changed after issuing. Once issued, a sequential number and issue date will be permanently locked.',
       confirmLabel: 'Issue Document',
       action: async () => {
         setActionLoading(true);
         try {
           await api.issueDocument(doc.id);
           await loadDocumentData();
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to issue document');
         } finally {
           setActionLoading(false);
           setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         }
       },
     });
+  };
+
+  const handleArchiveDraft = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Archive Draft',
+      message: 'This draft will be removed from the active register but preserved so you can restore it later.',
+      confirmLabel: 'Archive Draft',
+      action: async () => {
+        setActionLoading(true);
+        try {
+          await api.archiveDraft(doc.id);
+          await loadDocumentData();
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to archive draft');
+        } finally {
+          setActionLoading(false);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
+  };
+
+  const handleRestoreDraft = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Restore Draft',
+      message: 'This draft will return to the active register and can be edited again.',
+      confirmLabel: 'Restore Draft',
+      action: async () => {
+        setActionLoading(true);
+        try {
+          await api.restoreDraft(doc.id);
+          await loadDocumentData();
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to restore draft');
+        } finally {
+          setActionLoading(false);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
+  };
+
+  const handleDeleteDraft = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Permanently Delete Draft',
+      message: 'This cannot be undone. The unissued draft will be permanently removed.',
+      confirmLabel: 'Delete Draft',
+      isDestructive: true,
+      action: async () => {
+        setActionLoading(true);
+        try {
+          await api.deleteDraft(doc.id, true);
+          onBack();
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to delete draft');
+        } finally {
+          setActionLoading(false);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
+  };
+
+  const handleCreateReplacement = async () => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const replacement = await api.createReplacementQuotation(doc.id);
+      onEdit(replacement.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create replacement quotation');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -262,26 +360,49 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {isDraft && (
             <>
+              {isArchivedDraft ? (
+                <button
+                  onClick={handleRestoreDraft}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+                >
+                  Restore Draft
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => onEdit(doc.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 shadow-xs"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Draft</span>
+                  </button>
+                  <button
+                    onClick={handleIssue}
+                    className="flex items-center gap-1 px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md shadow-xs transition-colors"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Issue</span>
+                  </button>
+                  <button
+                    onClick={handleArchiveDraft}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    Archive Draft
+                  </button>
+                </>
+              )}
               <button
-                onClick={() => onEdit(doc.id)}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 shadow-xs"
+                onClick={handleDeleteDraft}
+                className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-white border border-rose-200 rounded-md hover:bg-rose-50"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Draft</span>
-              </button>
-              <button
-                onClick={handleIssue}
-                className="flex items-center gap-1 px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md shadow-xs transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Issue</span>
+                Delete Draft
               </button>
             </>
           )}
 
           {doc.type === 'quotation' && !isDraft && (
             <>
-              {doc.status !== 'converted' && (
+              {(doc.status === 'sent' || doc.status === 'accepted') && (
                 <button
                   onClick={handleConvertToInvoice}
                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-xs transition-colors"
@@ -292,6 +413,19 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
               )}
               {doc.status === 'sent' && (
                 <>
+                  <button
+                    onClick={handleCreateReplacement}
+                    disabled={actionLoading}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    Create Replacement Draft
+                  </button>
+                  <button
+                    onClick={() => onEdit(doc.id)}
+                    className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100"
+                  >
+                    Revise Issued Quote
+                  </button>
                   <button
                     onClick={() => handleQuotationStatus('accepted')}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100"
@@ -489,7 +623,7 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
           )}
 
           {/* Linked Document Links */}
-          {(linkedQuote || linkedInvoice || linkedJobCard) && (
+          {(linkedQuote || linkedInvoice || linkedJobCard || revisionSource) && (
             <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm text-xs space-y-2">
               <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-[10px]">
                 Related Documents
@@ -527,10 +661,84 @@ export const DocumentDetailView: React.FC<DocumentDetailViewProps> = ({
                   </button>
                 </div>
               )}
+              {revisionSource && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-slate-500">Replaces:</span>
+                  <button
+                    onClick={() => onNavigateToInvoice(revisionSource.id)}
+                    className="font-mono font-bold text-indigo-600 hover:underline"
+                  >
+                    {revisionSource.number || revisionSource.id}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {doc.type === 'quotation' && quotationRevisions.length > 0 && (
+        <section className="bg-white border border-slate-200 rounded-lg p-4 sm:p-6 shadow-sm space-y-3 print:hidden">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Quotation Revision History</h3>
+            <p className="text-xs text-slate-500 mt-1">Each entry is the complete saved version before an in-place change.</p>
+          </div>
+          <div className="space-y-2">
+            {quotationRevisions.map((revision, index) => (
+              <details key={revision.id} className="rounded-md border border-slate-200">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700">
+                  Version {quotationRevisions.length - index} · {new Date(revision.recordedAt).toLocaleString()} · {formatCents(revision.snapshot.totalCents)}
+                </summary>
+                <div className="border-t border-slate-100 p-3 space-y-3 text-xs">
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    <p><span className="font-semibold">Reference:</span> {revision.snapshot.reference}</p>
+                    <p><span className="font-semibold">Number:</span> {revision.snapshot.number || 'Draft'}</p>
+                    <p><span className="font-semibold">Scope:</span> {revision.snapshot.scope || '—'}</p>
+                    <p><span className="font-semibold">Terms:</span> {revision.snapshot.terms || '—'}</p>
+                    <p><span className="font-semibold">Exclusions:</span> {revision.snapshot.exclusions || '—'}</p>
+                    <p><span className="font-semibold">Turnaround:</span> {revision.snapshot.turnaround || '—'}</p>
+                    <p className="sm:col-span-2"><span className="font-semibold">Notes:</span> {revision.snapshot.notes || '—'}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {revision.snapshot.lines.map((line, lineIndex) => (
+                      <div key={`${revision.id}-line-${lineIndex}`} className="flex justify-between gap-3 py-1.5">
+                        <span>{line.description}{line.detail ? ` — ${line.detail}` : ''} × {line.qty}</span>
+                        <span className="font-mono whitespace-nowrap">{formatCents(line.totalCents)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {revision.snapshot.workItems.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Work items</p>
+                      {revision.snapshot.workItems.map((item, itemIndex) => (
+                        <p key={`${revision.id}-work-${itemIndex}`}>{item.title}{item.detail ? ` — ${item.detail}` : ''}</p>
+                      ))}
+                    </div>
+                  )}
+                  {revision.snapshot.intakeItems.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Intake</p>
+                      {revision.snapshot.intakeItems.map((item, itemIndex) => (
+                        <p key={`${revision.id}-intake-${itemIndex}`}>{item.label}: {item.value}</p>
+                      ))}
+                    </div>
+                  )}
+                  {revision.snapshot.diagnosticSections.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Diagnostics</p>
+                      {revision.snapshot.diagnosticSections.map((section, sectionIndex) => (
+                        <p key={`${revision.id}-diagnostic-${sectionIndex}`}>
+                          {section.title} — {section.status}: {section.details}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Payment Modal */}
       <PaymentModal

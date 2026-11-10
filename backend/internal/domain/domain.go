@@ -61,36 +61,45 @@ type Authorization struct {
 }
 
 type Doc struct {
-	ID                 string              `json:"id"`
-	Type               string              `json:"type"`
-	Number             *string             `json:"number"`
-	ClientID           string              `json:"clientId"`
-	JobCardID          *string             `json:"jobCardId"`
-	QuotationID        *string             `json:"quotationId"`
-	IssueDate          *string             `json:"issueDate"`
-	DueDate            *string             `json:"dueDate"`
-	ValidUntil         *string             `json:"validUntil"`
-	FollowUpDate       *string             `json:"followUpDate"`
-	Reference          string              `json:"reference"`
-	Scope              string              `json:"scope"`
-	WorkItems          []WorkItem          `json:"workItems"`
-	IntakeItems        []IntakeItem        `json:"intakeItems"`
-	DiagnosticSections []DiagnosticSection `json:"diagnosticSections"`
-	Authorization      Authorization       `json:"authorization"`
-	Lines              []Line              `json:"lines"`
-	TaxCents           int64               `json:"taxCents"`
-	SubtotalCents      int64               `json:"subtotalCents"`
-	TotalCents         int64               `json:"totalCents"`
-	DepositCents       *int64              `json:"depositCents"`
-	Payments           []Payment           `json:"payments"`
-	Status             string              `json:"status"`
-	Terms              string              `json:"terms"`
-	Exclusions         string              `json:"exclusions"`
-	Turnaround         string              `json:"turnaround"`
-	Notes              string              `json:"notes"`
-	FolderPath         *string             `json:"folderPath"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
+	ID                    string              `json:"id"`
+	Type                  string              `json:"type"`
+	Number                *string             `json:"number"`
+	ClientID              string              `json:"clientId"`
+	JobCardID             *string             `json:"jobCardId"`
+	QuotationID           *string             `json:"quotationId"`
+	IssueDate             *string             `json:"issueDate"`
+	DueDate               *string             `json:"dueDate"`
+	ValidUntil            *string             `json:"validUntil"`
+	FollowUpDate          *string             `json:"followUpDate"`
+	Reference             string              `json:"reference"`
+	Scope                 string              `json:"scope"`
+	WorkItems             []WorkItem          `json:"workItems"`
+	IntakeItems           []IntakeItem        `json:"intakeItems"`
+	DiagnosticSections    []DiagnosticSection `json:"diagnosticSections"`
+	Authorization         Authorization       `json:"authorization"`
+	Lines                 []Line              `json:"lines"`
+	TaxCents              int64               `json:"taxCents"`
+	SubtotalCents         int64               `json:"subtotalCents"`
+	TotalCents            int64               `json:"totalCents"`
+	DepositCents          *int64              `json:"depositCents"`
+	ArchivedAt            *string             `json:"archivedAt"`
+	RevisionOfQuotationID *string             `json:"revisionOfQuotationId"`
+	Payments              []Payment           `json:"payments"`
+	Status                string              `json:"status"`
+	Terms                 string              `json:"terms"`
+	Exclusions            string              `json:"exclusions"`
+	Turnaround            string              `json:"turnaround"`
+	Notes                 string              `json:"notes"`
+	FolderPath            *string             `json:"folderPath"`
+	CreatedAt             string              `json:"createdAt"`
+	UpdatedAt             string              `json:"updatedAt"`
+}
+
+type DocumentRevision struct {
+	ID         string `json:"id"`
+	DocumentID string `json:"documentId"`
+	RecordedAt string `json:"recordedAt"`
+	Snapshot   Doc    `json:"snapshot"`
 }
 
 type Settings struct {

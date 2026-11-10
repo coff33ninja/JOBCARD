@@ -13,6 +13,7 @@ import {
   Storage,
   Capabilities,
   DashboardSummary,
+  DocumentRevision,
 } from './types.ts';
 
 export interface DocumentFilters {
@@ -68,9 +69,16 @@ export interface ApiClient {
   restoreClient(id: string): Promise<Client>;
 
   listDocuments(filters?: DocumentFilters): Promise<Doc[]>;
+  listArchivedDocuments(): Promise<Doc[]>;
   getDocument(id: string): Promise<Doc>;
   createDraft(input: CreateDraftInput): Promise<Doc>;
   updateDraft(id: string, input: Partial<CreateDraftInput>): Promise<Doc>;
+  archiveDraft(id: string): Promise<Doc>;
+  restoreDraft(id: string): Promise<Doc>;
+  deleteDraft(id: string, confirm: boolean): Promise<Doc>;
+  createReplacementQuotation(id: string): Promise<Doc>;
+  updateIssuedQuotation(id: string, input: Partial<CreateDraftInput>, confirm: boolean): Promise<Doc>;
+  listQuotationRevisions(id: string): Promise<DocumentRevision[]>;
   issueDocument(id: string, issueDate?: ISODate): Promise<Doc>;
   addPayment(id: string, input: AddPaymentInput): Promise<Doc>;
   updateStatus(id: string, status: string): Promise<Doc>;

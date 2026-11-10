@@ -63,6 +63,8 @@ export interface Doc {
   dueDate: ISODate | null;
   validUntil: ISODate | null;
   followUpDate: ISODate | null; // invoices: reminder date to chase payment, null when unset
+  archivedAt?: string | null;
+  revisionOfQuotationId?: string | null;
   reference: string; // device / serial / job reference text
   scope: string;
   workItems: WorkItem[]; // completed or proposed work
@@ -83,6 +85,13 @@ export interface Doc {
   folderPath: string | null; // client folder on disk, set by backend
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DocumentRevision {
+  id: string;
+  documentId: string;
+  recordedAt: string;
+  snapshot: Doc;
 }
 
 export interface Settings {

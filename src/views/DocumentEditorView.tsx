@@ -22,6 +22,7 @@ import {
   Settings,
   WorkItem,
 } from '../api/types.ts';
+import { CreateDraftInput } from '../api/client.ts';
 import { calculateTotals, calculateLineTotal } from '../domain/totals.ts';
 import { formatCents, parseRandsToCents } from '../domain/money.ts';
 import { ClientModal } from '../components/ClientModal.tsx';
@@ -74,8 +75,16 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isConfirmIssueOpen, setIsConfirmIssueOpen] = useState(false);
   const [isConfirmConvertOpen, setIsConfirmConvertOpen] = useState(false);
+  const [isConfirmRevisionOpen, setIsConfirmRevisionOpen] = useState(false);
+  const [pendingRevisionInput, setPendingRevisionInput] = useState<Partial<CreateDraftInput> | null>(null);
 
   const api = getApiClient();
+  const hasIssuedNumber = existingDoc?.number !== null && existingDoc?.number !== undefined;
+  const isArchivedDraft = Boolean(existingDoc?.archivedAt);
+  const canReviseIssuedQuotation = Boolean(
+    hasIssuedNumber && existingDoc?.type === 'quotation' && existingDoc.status === 'sent' && !isArchivedDraft
+  );
+  const isIssued = (hasIssuedNumber && !canReviseIssuedQuotation) || isArchivedDraft;
 
   useEffect(() => {
     let isMounted = true;
@@ -271,49 +280,57 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           details: section.details.trim(),
         }));
 
+      const input: CreateDraftInput = {
+        type,
+        clientId,
+        reference: reference.trim(),
+        scope: scope.trim(),
+        jobCardId,
+        quotationId,
+        workItems: cleanWorkItems,
+        intakeItems: cleanIntakeItems,
+        diagnosticSections: cleanDiagnosticSections,
+        authorization,
+        lines: cleanLines,
+        depositCents,
+        terms: terms.trim(),
+        exclusions: exclusions.trim(),
+        turnaround: turnaround.trim(),
+        notes: notes.trim(),
+      };
+
       let savedDoc: Doc;
       if (existingDoc) {
-        savedDoc = await api.updateDraft(existingDoc.id, {
-          clientId,
-          reference: reference.trim(),
-          scope: scope.trim(),
-          jobCardId,
-          quotationId,
-          workItems: cleanWorkItems,
-          intakeItems: cleanIntakeItems,
-          diagnosticSections: cleanDiagnosticSections,
-          authorization,
-          lines: cleanLines,
-          depositCents,
-          terms: terms.trim(),
-          exclusions: exclusions.trim(),
-          turnaround: turnaround.trim(),
-          notes: notes.trim(),
-        });
+        if (canReviseIssuedQuotation) {
+          setPendingRevisionInput(input);
+          setIsConfirmRevisionOpen(true);
+          return;
+        }
+        savedDoc = await api.updateDraft(existingDoc.id, input);
       } else {
-        savedDoc = await api.createDraft({
-          type,
-          clientId,
-          reference: reference.trim(),
-          scope: scope.trim(),
-          jobCardId,
-          quotationId,
-          workItems: cleanWorkItems,
-          intakeItems: cleanIntakeItems,
-          diagnosticSections: cleanDiagnosticSections,
-          authorization,
-          lines: cleanLines,
-          depositCents,
-          terms: terms.trim(),
-          exclusions: exclusions.trim(),
-          turnaround: turnaround.trim(),
-          notes: notes.trim(),
-        });
+        savedDoc = await api.createDraft(input);
       }
 
       onSaved(savedDoc.id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save draft');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmRevision = async () => {
+    if (!existingDoc || !pendingRevisionInput) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const updated = await api.updateIssuedQuotation(existingDoc.id, pendingRevisionInput, true);
+      setPendingRevisionInput(null);
+      setIsConfirmRevisionOpen(false);
+      onSaved(updated.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to revise quotation');
+      setIsConfirmRevisionOpen(false);
     } finally {
       setSaving(false);
     }
@@ -399,8 +416,6 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
     );
   }
 
-  const isIssued = existingDoc?.number !== null && existingDoc?.number !== undefined;
-
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Top Header */}
@@ -423,7 +438,7 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
             </button>
           )}
 
-          {!isIssued && (
+          {!hasIssuedNumber && !isArchivedDraft && (
             <>
               <button
                 onClick={handleSaveDraft}
@@ -443,10 +458,20 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
               </button>
             </>
           )}
+          {canReviseIssuedQuotation && (
+            <button
+              onClick={handleSaveDraft}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-xs"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Quotation Revision</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {isIssued && (
+      {isIssued && existingDoc && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-md text-xs flex items-center justify-between">
           <span>
             This document has been issued with number <strong>{existingDoc.number}</strong>. Issued documents cannot be edited.
@@ -457,6 +482,11 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           >
             View preview & actions
           </button>
+        </div>
+      )}
+      {canReviseIssuedQuotation && existingDoc && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 p-3 rounded-md text-xs">
+          Editing issued quotation <strong>{existingDoc.number}</strong>. Saving requires confirmation and stores the previous version in history.
         </div>
       )}
 
@@ -987,11 +1017,26 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
       <ConfirmModal
         isOpen={isConfirmIssueOpen}
         title="Issue Document"
-        message="Number can't be changed after issuing. Once issued, a sequential number and issue date will be permanently locked."
+        message={existingDoc?.revisionOfQuotationId
+          ? 'Issuing this replacement assigns a permanent number and cancels the original quotation. The original remains preserved for reference.'
+          : "Number can't be changed after issuing. Once issued, a sequential number and issue date will be permanently locked."}
         confirmLabel="Yes, Issue Document"
         cancelLabel="Keep as Draft"
         onConfirm={handleConfirmIssue}
         onCancel={() => setIsConfirmIssueOpen(false)}
+        isLoading={saving}
+      />
+
+      <ConfirmModal
+        isOpen={isConfirmRevisionOpen}
+        title="Revise Issued Quotation"
+        message="This updates the existing quotation without changing its number or status. Its current version will be saved in revision history."
+        confirmLabel="Save Quotation Revision"
+        onConfirm={handleConfirmRevision}
+        onCancel={() => {
+          setIsConfirmRevisionOpen(false);
+          setPendingRevisionInput(null);
+        }}
         isLoading={saving}
       />
 

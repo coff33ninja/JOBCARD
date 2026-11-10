@@ -50,8 +50,14 @@ Example:
 | `create_client`, `update_client` | Create or edit client details | no |
 | `archive_client`, `restore_client` | Archive a client without deleting its documents, or restore it | no |
 | `list_documents`, `get_document` | Read quotations, invoices, job cards | no |
+| `list_archived_documents` | List archived drafts, excluded from the active register and dashboard totals | no |
 | `create_draft`, `update_draft` | Create and edit drafts (no number yet) | no |
+| `archive_draft`, `restore_draft` | Preserve a draft outside the active register, or restore it | **yes** |
+| `delete_draft` | Permanently delete an unissued draft that has no linked documents or payments | **yes** |
 | `issue_document` | Assign the permanent number and lock the document | **yes** |
+| `create_replacement_quotation` | Create a linked replacement draft from an open issued quotation | no |
+| `update_quotation_revision` | Edit an open issued quotation in place, saving its previous version | **yes** |
+| `list_quotation_revisions` | Read saved pre-edit versions of a quotation, newest first | no |
 | `set_follow_up` | Set or clear a reminder date on an issued invoice | no |
 | `add_payment` | Record a payment on an issued invoice (cannot be deleted) | **yes** |
 | `convert_quotation` | Draft invoice from an issued quotation | **yes** |
@@ -67,5 +73,7 @@ Example:
 - **Drafts first.** The AI fills in drafts; permanent steps (issue, payment, convert, cancel) are refused unless the call carries `confirm=true`, and the server instructions tell the model to get your approval for that exact document first. The check is enforced in the server, not only in the prompt.
 - **No settings access.** Business and bank details can be read but not changed over MCP (`update_settings` is deliberately not exposed). Change them in the app.
 - **No permanent client deletes.** Archiving hides a client from active lists and new documents; existing documents stay linked, and `restore_client` reverses the archive.
+- **Document lifecycle.** Archive keeps unissued drafts available in `list_archived_documents`; restoration returns them to the active register. Permanent draft deletion is blocked when another document or a payment references it. Issued documents cannot be deleted.
+- **Quotation revisions.** `create_replacement_quotation` copies an open issued quotation into a linked draft. The source remains open until the replacement is issued; issuing it marks the source cancelled but retains it for reference. `update_quotation_revision` changes an open issued quotation in place only after explicit approval and saves the previous version, available through `list_quotation_revisions`.
 - **Audit log.** Every write through MCP (and every POST/PUT/DELETE through the API) is recorded with time, source, action and arguments. Ask for `get_audit_log` to see what changed.
 - **Errors are readable.** Failures come back as `{"error":{"code","message","fields"}}` so the model can correct itself.

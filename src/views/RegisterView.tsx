@@ -29,6 +29,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
 }) => {
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [showingArchived, setShowingArchived] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'all' | 'invoice' | 'quotation' | 'jobcard'>('all');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || 'all');
   const [clientIdFilter, setClientIdFilter] = useState<string>('all');
@@ -54,13 +55,14 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
       try {
         setLoading(true);
         setError(null);
-        const [docsData, clientsData] = await Promise.all([
-          api.listDocuments(),
+        const [docsData, clientsData, archivedClientsData] = await Promise.all([
+          showingArchived ? api.listArchivedDocuments() : api.listDocuments(),
           api.listClients(),
+          showingArchived ? api.listArchivedClients() : Promise.resolve([]),
         ]);
         if (isMounted) {
           setDocuments(docsData);
-          setClients(clientsData);
+          setClients([...clientsData, ...archivedClientsData]);
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -76,7 +78,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [showingArchived]);
 
   const handleExportSpreadsheet = async () => {
     try {
@@ -156,14 +158,26 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Document Register
+            {showingArchived ? 'Archived Drafts' : 'Document Register'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Master ledger of all job cards, quotations, and invoices with real-time payment balances.
+            {showingArchived
+              ? 'Preserved drafts removed from the active register. Restore one to continue editing, or permanently delete it.'
+              : 'Master ledger of all job cards, quotations, and invoices with real-time payment balances.'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setShowingArchived((current) => !current);
+              setStatusFilter('all');
+            }}
+            aria-pressed={showingArchived}
+            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+          >
+            {showingArchived ? 'Active Register' : 'Archived Drafts'}
+          </button>
           <button
             onClick={handleExportSpreadsheet}
             disabled={exporting}
@@ -359,6 +373,11 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
                         <span className="text-[10px] text-slate-400 uppercase font-semibold block">
                           {doc.type}
                         </span>
+                        {doc.archivedAt && (
+                          <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                            Archived draft
+                          </span>
+                        )}
                       </td>
 
                       {/* Client */}

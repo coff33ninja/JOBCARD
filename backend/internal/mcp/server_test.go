@@ -106,6 +106,44 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 	}
 }
 
+func TestLifecycleToolsAreRegisteredAndRequireConfirmation(t *testing.T) {
+	s := newServer(t)
+	stringPtr := func(value string) *string { return &value }
+	response := rpc(t, s, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	tools := response[0]["result"].(map[string]any)["tools"].([]any)
+	names := map[string]bool{}
+	for _, entry := range tools {
+		names[entry.(map[string]any)["name"].(string)] = true
+	}
+	for _, name := range []string{
+		"list_archived_documents", "archive_draft", "restore_draft", "delete_draft",
+		"create_replacement_quotation", "update_quotation_revision", "list_quotation_revisions",
+	} {
+		if !names[name] {
+			t.Errorf("missing lifecycle tool %s", name)
+		}
+	}
+
+	client, err := s.Svc.CreateClient(core.ClientInput{Name: core.Opt[string]{Set: true, Val: stringPtr("Lifecycle")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := s.Svc.CreateDraft(core.DraftInput{
+		Type:      core.Opt[string]{Set: true, Val: stringPtr("jobcard")},
+		ClientID:  core.Opt[string]{Set: true, Val: stringPtr(client.ID)},
+		Reference: core.Opt[string]{Set: true, Val: stringPtr("Delete safely")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, isErr := call(t, s, 2, "delete_draft", map[string]any{"id": doc.ID, "confirm": false}); !isErr {
+		t.Fatal("delete_draft must reject calls without explicit confirmation")
+	}
+	if _, isErr := call(t, s, 3, "delete_draft", map[string]any{"id": doc.ID, "confirm": true}); isErr {
+		t.Fatal("confirmed delete_draft should succeed")
+	}
+}
+
 func TestDraftToolsExposeAndPersistReportFields(t *testing.T) {
 	s := newServer(t)
 	response := rpc(t, s, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)

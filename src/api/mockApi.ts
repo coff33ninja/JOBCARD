@@ -13,6 +13,7 @@ import {
   Storage,
   Capabilities,
   DashboardSummary,
+  DocumentRevision,
   ApiError,
   ISODate,
 } from './types.ts';
@@ -25,6 +26,7 @@ export class MockApi implements ApiClient {
   private clients: Client[] = [];
   private readonly archivedClientIds = new Set<string>();
   private documents: Doc[] = [];
+  private quotationRevisions: DocumentRevision[] = [];
   private settings: Settings;
   private storage: Storage;
   private capabilities: Capabilities;
@@ -133,7 +135,7 @@ export class MockApi implements ApiClient {
 
   // --- Documents ---
   async listDocuments(filters?: DocumentFilters): Promise<Doc[]> {
-    let result = [...this.documents];
+    let result = this.documents.filter((doc) => !doc.archivedAt);
 
     if (filters?.type) {
       result = result.filter((d) => d.type === filters.type);
@@ -174,6 +176,10 @@ export class MockApi implements ApiClient {
     });
   }
 
+  async listArchivedDocuments(): Promise<Doc[]> {
+    return JSON.parse(JSON.stringify(this.documents.filter((doc) => !!doc.archivedAt)));
+  }
+
   async getDocument(id: string): Promise<Doc> {
     const doc = this.documents.find((d) => d.id === id);
     if (!doc) {
@@ -212,6 +218,8 @@ export class MockApi implements ApiClient {
       dueDate: null,
       validUntil: null,
       followUpDate: null,
+      archivedAt: null,
+      revisionOfQuotationId: null,
       reference: input.reference.trim(),
       scope: input.scope?.trim() || '',
       workItems: input.workItems || [],
@@ -297,6 +305,158 @@ export class MockApi implements ApiClient {
     return JSON.parse(JSON.stringify(updated));
   }
 
+  async archiveDraft(id: string): Promise<Doc> {
+    const idx = this.documents.findIndex((doc) => doc.id === id);
+    if (idx === -1) throw new ApiError(404, 'NOT_FOUND', `Document ${id} not found`);
+    const doc = this.documents[idx];
+    if (doc.number !== null || doc.status !== 'draft') {
+      throw new ApiError(409, 'INVALID_STATE', 'Only an unissued draft can be archived');
+    }
+    const updated = { ...doc, archivedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    this.documents[idx] = updated;
+    return JSON.parse(JSON.stringify(updated));
+  }
+
+  async restoreDraft(id: string): Promise<Doc> {
+    const idx = this.documents.findIndex((doc) => doc.id === id);
+    if (idx === -1) throw new ApiError(404, 'NOT_FOUND', `Document ${id} not found`);
+    const doc = this.documents[idx];
+    if (doc.number !== null || doc.status !== 'draft') {
+      throw new ApiError(409, 'INVALID_STATE', 'Only an unissued draft can be restored');
+    }
+    const updated = { ...doc, archivedAt: null, updatedAt: new Date().toISOString() };
+    this.documents[idx] = updated;
+    return JSON.parse(JSON.stringify(updated));
+  }
+
+  async deleteDraft(id: string, confirm: boolean): Promise<Doc> {
+    if (!confirm) throw new ApiError(400, 'CONFIRMATION_REQUIRED', 'Deleting a draft requires explicit confirmation');
+    const idx = this.documents.findIndex((doc) => doc.id === id);
+    if (idx === -1) throw new ApiError(404, 'NOT_FOUND', `Document ${id} not found`);
+    const doc = this.documents[idx];
+    if (doc.number !== null || doc.status !== 'draft') {
+      throw new ApiError(409, 'INVALID_STATE', 'Only an unissued draft can be permanently deleted');
+    }
+    if (this.documents.some((other) =>
+      other.id !== id && (
+        other.quotationId === id ||
+        other.jobCardId === id ||
+        other.revisionOfQuotationId === id
+      )
+    )) {
+      throw new ApiError(409, 'DOCUMENT_IN_USE', 'A linked document prevents this draft from being deleted');
+    }
+    this.documents.splice(idx, 1);
+    return JSON.parse(JSON.stringify(doc));
+  }
+
+  async createReplacementQuotation(id: string): Promise<Doc> {
+    const source = this.documents.find((doc) => doc.id === id);
+    if (!source) throw new ApiError(404, 'NOT_FOUND', `Quotation ${id} not found`);
+    if (source.type !== 'quotation' || !source.number || source.status !== 'sent' || source.archivedAt) {
+      throw new ApiError(409, 'INVALID_STATE', 'Only an open, issued quotation can be replaced');
+    }
+    const nowIso = new Date().toISOString();
+    const replacement: Doc = {
+      ...JSON.parse(JSON.stringify(source)),
+      id: `doc-revision-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      number: null,
+      issueDate: null,
+      dueDate: null,
+      validUntil: null,
+      followUpDate: null,
+      archivedAt: null,
+      revisionOfQuotationId: source.id,
+      payments: [],
+      status: 'draft',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    this.documents.push(replacement);
+    return JSON.parse(JSON.stringify(replacement));
+  }
+
+  async updateIssuedQuotation(
+    id: string,
+    input: Partial<CreateDraftInput>,
+    confirm: boolean
+  ): Promise<Doc> {
+    if (!confirm) throw new ApiError(400, 'CONFIRMATION_REQUIRED', 'Revising an issued quotation requires confirmation');
+    const idx = this.documents.findIndex((doc) => doc.id === id);
+    if (idx === -1) throw new ApiError(404, 'NOT_FOUND', `Quotation ${id} not found`);
+    const current = this.documents[idx];
+    if (current.type !== 'quotation' || !current.number || current.status !== 'sent' || current.archivedAt) {
+      throw new ApiError(409, 'INVALID_STATE', 'Only an open, issued quotation can be revised in place');
+    }
+    if (
+      input.clientId === undefined &&
+      input.reference === undefined &&
+      input.scope === undefined &&
+      input.jobCardId === undefined &&
+      input.quotationId === undefined &&
+      input.workItems === undefined &&
+      input.lines === undefined &&
+      input.intakeItems === undefined &&
+      input.diagnosticSections === undefined &&
+      input.authorization === undefined &&
+      input.depositCents === undefined &&
+      input.terms === undefined &&
+      input.exclusions === undefined &&
+      input.turnaround === undefined &&
+      input.notes === undefined
+    ) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'At least one quotation field must be provided');
+    }
+    if (input.lines?.some((line) =>
+      !line.description.trim() || line.qty <= 0 || line.unitPriceCents < 0
+    )) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Invalid line items');
+    }
+    const nowIso = new Date().toISOString();
+    const lines = input.lines !== undefined ? input.lines.map((line) => ({
+      ...line,
+      totalCents: Math.round(line.qty * line.unitPriceCents),
+    })) : current.lines;
+    const totals = calculateTotals(lines, this.settings.taxRate, current.payments);
+    const updated: Doc = {
+      ...current,
+      clientId: input.clientId ?? current.clientId,
+      reference: input.reference?.trim() ?? current.reference,
+      scope: input.scope?.trim() ?? current.scope,
+      jobCardId: input.jobCardId !== undefined ? input.jobCardId : current.jobCardId,
+      quotationId: input.quotationId !== undefined ? input.quotationId : current.quotationId,
+      workItems: input.workItems ?? current.workItems,
+      intakeItems: input.intakeItems ?? current.intakeItems,
+      diagnosticSections: input.diagnosticSections ?? current.diagnosticSections,
+      authorization: input.authorization ?? current.authorization,
+      lines,
+      depositCents: input.depositCents !== undefined ? input.depositCents : current.depositCents,
+      terms: input.terms ?? current.terms,
+      exclusions: input.exclusions ?? current.exclusions,
+      turnaround: input.turnaround ?? current.turnaround,
+      notes: input.notes ?? current.notes,
+      subtotalCents: totals.subtotalCents,
+      taxCents: totals.taxCents,
+      totalCents: totals.totalCents,
+      updatedAt: nowIso,
+    };
+    this.quotationRevisions.push({
+      id: `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      documentId: current.id,
+      recordedAt: nowIso,
+      snapshot: JSON.parse(JSON.stringify(current)),
+    });
+    this.documents[idx] = updated;
+    return JSON.parse(JSON.stringify(updated));
+  }
+
+  async listQuotationRevisions(id: string): Promise<DocumentRevision[]> {
+    const doc = this.documents.find((item) => item.id === id);
+    if (!doc) throw new ApiError(404, 'NOT_FOUND', `Quotation ${id} not found`);
+    if (doc.type !== 'quotation') throw new ApiError(409, 'INVALID_STATE', 'Revision history is available only for quotations');
+    return JSON.parse(JSON.stringify(this.quotationRevisions.filter((revision) => revision.documentId === id)));
+  }
+
   async issueDocument(id: string, issueDate?: ISODate): Promise<Doc> {
     const idx = this.documents.findIndex((d) => d.id === id);
     if (idx === -1) {
@@ -305,6 +465,18 @@ export class MockApi implements ApiClient {
     const doc = this.documents[idx];
     if (doc.number !== null) {
       throw new ApiError(409, 'ALREADY_ISSUED', `Document ${id} has already been issued with number ${doc.number}`);
+    }
+    const replacementSourceIdx = doc.revisionOfQuotationId
+      ? this.documents.findIndex((item) => item.id === doc.revisionOfQuotationId)
+      : -1;
+    if (doc.revisionOfQuotationId && (
+      replacementSourceIdx === -1 ||
+      this.documents[replacementSourceIdx].type !== 'quotation' ||
+      !this.documents[replacementSourceIdx].number ||
+      this.documents[replacementSourceIdx].status !== 'sent' ||
+      this.documents[replacementSourceIdx].archivedAt
+    )) {
+      throw new ApiError(409, 'INVALID_STATE', 'The source quotation is no longer open; the replacement cannot be issued');
     }
 
     const dateToUse = issueDate || this.today;
@@ -334,6 +506,13 @@ export class MockApi implements ApiClient {
     };
 
     this.documents[idx] = issuedDoc;
+    if (replacementSourceIdx >= 0) {
+      this.documents[replacementSourceIdx] = {
+        ...this.documents[replacementSourceIdx],
+        status: 'cancelled',
+        updatedAt: nowIso,
+      };
+    }
     return JSON.parse(JSON.stringify(issuedDoc));
   }
 
@@ -476,7 +655,7 @@ export class MockApi implements ApiClient {
   // --- Dashboard ---
   async getDashboard(year?: number): Promise<DashboardSummary> {
     const targetYear = year || parseISODate(this.today).getUTCFullYear();
-    const invoices = this.documents.filter((d) => d.type === 'invoice');
+    const invoices = this.documents.filter((d) => d.type === 'invoice' && !d.archivedAt);
 
     let invoicedCents = 0;
     let paidCents = 0;
@@ -509,7 +688,7 @@ export class MockApi implements ApiClient {
     }
 
     // Also count job cards per month
-    for (const jc of this.documents.filter((d) => d.type === 'jobcard')) {
+    for (const jc of this.documents.filter((d) => d.type === 'jobcard' && !d.archivedAt)) {
       if (jc.issueDate) {
         const d = parseISODate(jc.issueDate);
         if (d.getUTCFullYear() === targetYear) {

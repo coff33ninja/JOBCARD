@@ -230,6 +230,130 @@ func TestClientArchivePreservesDocumentsAndCanBeRestored(t *testing.T) {
 	}
 }
 
+func TestDraftArchiveRestoreAndDeleteBoundaries(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+	doc := draft(t, s, "quotation", c.ID, 1000)
+
+	archived, err := s.ArchiveDraft(doc.ID)
+	if err != nil || archived.ArchivedAt == nil {
+		t.Fatalf("archive draft = %+v, %v", archived, err)
+	}
+	active, err := s.ListDocuments(DocFilters{})
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active documents after archive = %v, %v", active, err)
+	}
+	archivedDocs, err := s.ListArchivedDocuments()
+	if err != nil || len(archivedDocs) != 1 || archivedDocs[0].ID != doc.ID {
+		t.Fatalf("archived documents = %v, %v", archivedDocs, err)
+	}
+
+	restored, err := s.RestoreDraft(doc.ID)
+	if err != nil || restored.ArchivedAt != nil {
+		t.Fatalf("restore draft = %+v, %v", restored, err)
+	}
+	if _, err := s.DeleteDraft(doc.ID); err != nil {
+		t.Fatalf("delete restored draft: %v", err)
+	}
+	if _, err := s.GetDocument(doc.ID); err == nil {
+		t.Fatal("deleted draft is still retrievable")
+	}
+
+	issued := draft(t, s, "quotation", c.ID, 1000)
+	if _, err := s.IssueDocument(issued.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.DeleteDraft(issued.ID)
+	wantStatus(t, err, 409, "INVALID_STATE")
+}
+
+func TestReplacementQuotationCopiesFieldsAndCancelsSourceOnIssue(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+	source := draft(t, s, "quotation", c.ID, 12500)
+	source, err := s.UpdateDraft(source.ID, DraftInput{
+		Scope:      str("Replace display"),
+		Exclusions: str("Data recovery"),
+		Turnaround: str("Two days"),
+		Notes:      str("Bring charger"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err = s.IssueDocument(source.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replacement, err := s.CreateReplacementQuotation(source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.Number != nil || replacement.Status != "draft" ||
+		replacement.RevisionOfQuotationID == nil || *replacement.RevisionOfQuotationID != source.ID ||
+		replacement.ClientID != source.ClientID || replacement.Scope != source.Scope ||
+		replacement.TotalCents != source.TotalCents || replacement.Exclusions != source.Exclusions ||
+		replacement.Turnaround != source.Turnaround || replacement.Notes != source.Notes {
+		t.Fatalf("replacement did not preserve source fields and linkage: %+v", replacement)
+	}
+	stillOpen, err := s.GetDocument(source.ID)
+	if err != nil || stillOpen.Status != "sent" {
+		t.Fatalf("source should remain open until replacement is issued: %+v, %v", stillOpen, err)
+	}
+
+	issuedReplacement, err := s.IssueDocument(replacement.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelledSource, err := s.GetDocument(source.ID)
+	if err != nil || cancelledSource.Status != "cancelled" {
+		t.Fatalf("source quotation after replacement issue = %+v, %v", cancelledSource, err)
+	}
+	if issuedReplacement.Number == nil || issuedReplacement.Status != "sent" {
+		t.Fatalf("replacement quotation was not issued: %+v", issuedReplacement)
+	}
+}
+
+func TestIssuedQuotationRevisionRequiresConfirmationAndPreservesHistory(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+	quote := draft(t, s, "quotation", c.ID, 12500)
+	quote, err := s.IssueDocument(quote.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	update := DraftInput{Scope: str("Updated scope"), Lines: Opt[[]domain.Line]{
+		Set: true, Val: &[]domain.Line{{Description: "Updated work", Qty: 1, UnitPriceCents: 15000}},
+	}}
+	_, err = s.UpdateIssuedQuotation(quote.ID, update, false)
+	wantStatus(t, err, 400, "CONFIRMATION_REQUIRED")
+
+	updated, err := s.UpdateIssuedQuotation(quote.ID, update, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Number == nil || *updated.Number != *quote.Number || updated.Status != quote.Status ||
+		updated.Scope != "Updated scope" || updated.TotalCents != 15000 {
+		t.Fatalf("in-place revision changed immutable issue details or missed updates: %+v", updated)
+	}
+	revisions, err := s.ListQuotationRevisions(quote.ID)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("revision history = %v, %v", revisions, err)
+	}
+	if revisions[0].Snapshot.Scope != quote.Scope || revisions[0].Snapshot.TotalCents != quote.TotalCents {
+		t.Fatalf("revision snapshot did not preserve the old quotation: %+v", revisions[0].Snapshot)
+	}
+
+	invalidUpdate := DraftInput{Lines: Opt[[]domain.Line]{Set: true, Val: &[]domain.Line{{Qty: 0}}}}
+	_, err = s.UpdateIssuedQuotation(quote.ID, invalidUpdate, true)
+	wantStatus(t, err, 400, "VALIDATION_FAILED")
+	revisions, err = s.ListQuotationRevisions(quote.ID)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("failed update must not add revision history: %v, %v", revisions, err)
+	}
+}
+
 func TestArchivedAtColumnMigratesLegacyDatabase(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })

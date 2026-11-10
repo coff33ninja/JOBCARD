@@ -245,6 +245,59 @@ function runApiContractSuite(name: string, createClient: () => ApiClient) {
     );
   });
 
+  test(`[${name}] Draft archive/delete and quotation revision lifecycle`, async () => {
+    const api = createClient();
+    const clients = await api.listClients();
+    const clientId = clients[0].id;
+    const draft = await api.createDraft({ type: 'jobcard', clientId, reference: 'Archive lifecycle' });
+
+    await api.archiveDraft(draft.id);
+    assert.equal((await api.listDocuments()).some((doc) => doc.id === draft.id), false);
+    assert.equal((await api.listArchivedDocuments()).some((doc) => doc.id === draft.id), true);
+    await api.restoreDraft(draft.id);
+    await assert.rejects(() => api.deleteDraft(draft.id, false), (err: unknown) =>
+      err instanceof ApiError && err.code === 'CONFIRMATION_REQUIRED'
+    );
+    await api.deleteDraft(draft.id, true);
+    await assert.rejects(() => api.getDocument(draft.id), (err: unknown) =>
+      err instanceof ApiError && err.status === 404
+    );
+
+    const quoteDraft = await api.createDraft({
+      type: 'quotation',
+      clientId,
+      reference: 'Quotation lifecycle',
+      lines: [{ description: 'Repair', qty: 1, unitPriceCents: 12500, totalCents: 12500 }],
+    });
+    const quote = await api.issueDocument(quoteDraft.id, '2026-11-08');
+    await assert.rejects(() => api.updateIssuedQuotation(quote.id, { scope: 'Revised' }, false), (err: unknown) =>
+      err instanceof ApiError && err.code === 'CONFIRMATION_REQUIRED'
+    );
+    const revised = await api.updateIssuedQuotation(quote.id, { scope: 'Revised' }, true);
+    assert.equal(revised.number, quote.number);
+    assert.equal(revised.status, quote.status);
+    assert.equal((await api.listQuotationRevisions(quote.id))[0].snapshot.scope, quote.scope);
+    const revisionCount = (await api.listQuotationRevisions(quote.id)).length;
+    await assert.rejects(
+      () => api.updateIssuedQuotation(quote.id, { type: 'invoice' }, true),
+      (err: unknown) => err instanceof ApiError && err.code === 'VALIDATION_FAILED'
+    );
+    await assert.rejects(
+      () => api.updateIssuedQuotation(quote.id, {
+        lines: [{ description: '', qty: 1, unitPriceCents: 0, totalCents: 0 }],
+      }, true),
+      (err: unknown) => err instanceof ApiError && err.code === 'VALIDATION_FAILED'
+    );
+    assert.equal((await api.getDocument(quote.id)).type, 'quotation');
+    assert.equal((await api.listQuotationRevisions(quote.id)).length, revisionCount);
+
+    const replacement = await api.createReplacementQuotation(quote.id);
+    assert.equal(replacement.revisionOfQuotationId, quote.id);
+    assert.equal(replacement.totalCents, revised.totalCents);
+    await api.issueDocument(replacement.id, '2026-11-09');
+    assert.equal((await api.getDocument(quote.id)).status, 'cancelled');
+  });
+
   test(`[${name}] Document export constraints (drafts blocked, issued allowed)`, async () => {
     const api = createClient();
     const clients = await api.listClients();

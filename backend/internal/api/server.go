@@ -41,13 +41,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE "+v+"/clients/{id}", s.archiveClient)
 	mux.HandleFunc("POST "+v+"/clients/{id}/restore", s.restoreClient)
 	mux.HandleFunc("GET "+v+"/documents", s.listDocuments)
+	mux.HandleFunc("GET "+v+"/documents/archived", s.listArchivedDocuments)
 	mux.HandleFunc("GET "+v+"/documents/{id}", s.getDocument)
 	mux.HandleFunc("POST "+v+"/documents", s.createDraft)
 	mux.HandleFunc("PUT "+v+"/documents/{id}", s.updateDraft)
+	mux.HandleFunc("POST "+v+"/documents/{id}/archive", s.archiveDraft)
+	mux.HandleFunc("POST "+v+"/documents/{id}/restore", s.restoreDraft)
+	mux.HandleFunc("DELETE "+v+"/documents/{id}", s.deleteDraft)
 	mux.HandleFunc("POST "+v+"/documents/{id}/issue", s.issue)
 	mux.HandleFunc("POST "+v+"/documents/{id}/follow-up", s.setFollowUp)
 	mux.HandleFunc("POST "+v+"/documents/{id}/payments", s.addPayment)
 	mux.HandleFunc("POST "+v+"/documents/{id}/status", s.setStatus)
+	mux.HandleFunc("POST "+v+"/quotations/{id}/replacement", s.createReplacementQuotation)
+	mux.HandleFunc("PUT "+v+"/quotations/{id}/revision", s.updateIssuedQuotation)
+	mux.HandleFunc("GET "+v+"/quotations/{id}/revisions", s.listQuotationRevisions)
 	mux.HandleFunc("POST "+v+"/quotations/{id}/convert", s.convert)
 	mux.HandleFunc("POST "+v+"/documents/{id}/export", s.exportDoc)
 	mux.HandleFunc("POST "+v+"/documents/{id}/reveal", s.reveal)
@@ -214,6 +221,15 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, docs)
 }
 
+func (s *Server) listArchivedDocuments(w http.ResponseWriter, _ *http.Request) {
+	docs, err := s.Svc.ListArchivedDocuments()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, docs)
+}
+
 func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 	d, err := s.Svc.GetDocument(r.PathValue("id"))
 	if err != nil {
@@ -221,6 +237,45 @@ func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, d)
+}
+
+func (s *Server) archiveDraft(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Svc.ArchiveDraft(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) restoreDraft(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Svc.RestoreDraft(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) deleteDraft(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if !body.Confirm {
+		writeErr(w, &core.AppError{Status: http.StatusBadRequest, Code: "CONFIRMATION_REQUIRED",
+			Message: "Permanently deleting a draft requires explicit confirmation"})
+		return
+	}
+	d, err := s.Svc.DeleteDraft(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }
 
 func (s *Server) createDraft(w http.ResponseWriter, r *http.Request) {
@@ -249,6 +304,41 @@ func (s *Server) updateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, d)
+}
+
+func (s *Server) createReplacementQuotation(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Svc.CreateReplacementQuotation(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, d)
+}
+
+func (s *Server) updateIssuedQuotation(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		core.DraftInput
+		Confirm bool `json:"confirm"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	d, err := s.Svc.UpdateIssuedQuotation(r.PathValue("id"), in.DraftInput, in.Confirm)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) listQuotationRevisions(w http.ResponseWriter, r *http.Request) {
+	revisions, err := s.Svc.ListQuotationRevisions(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, revisions)
 }
 
 func (s *Server) issue(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,7 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 ## Endpoint Index
 
 ### Clients
+
 - [GET /clients](clients/list.md) — List active clients
 - [GET /clients/archived](clients/archived.md) — List archived clients
 - [POST /clients](clients/create.md) — Create a new client
@@ -22,18 +23,27 @@ Error shape: `{ "error": { "code": string, "message": string, "fields"?: Record<
 - [POST /clients/{id}/restore](clients/restore.md) — Restore an archived client
 
 ### Documents
+
 - [GET /documents](documents/list.md) — List and filter document register
+- [GET /documents/archived](documents/archived.md) — List archived drafts
 - [GET /documents/{id}](documents/get.md) — Get document by ID
 - [POST /documents](documents/create.md) — Create draft document
 - [PUT /documents/{id}](documents/update.md) — Update draft document
+- [POST /documents/{id}/archive](documents/archive.md) — Archive an unissued draft
+- [POST /documents/{id}/restore](documents/restore.md) — Restore an archived draft
+- [DELETE /documents/{id}](documents/delete.md) — Permanently delete an unissued draft
 - [POST /documents/{id}/issue](documents/issue.md) — Issue document and assign number
 - [POST /documents/{id}/payments](documents/payments.md) — Record a payment against an invoice
 - [POST /documents/{id}/status](documents/status.md) — Update document status (cancel, accept, decline)
 - [POST /quotations/{id}/convert](quotations/convert.md) — Convert quotation to draft invoice
+- [POST /quotations/{id}/replacement](quotations/replacement.md) — Create a linked replacement quotation draft
+- [PUT /quotations/{id}/revision](quotations/revision.md) — Revise an issued quotation in place
+- [GET /quotations/{id}/revisions](quotations/revisions.md) — List saved quotation versions
 - [POST /documents/{id}/export](documents/export.md) — Export PDF or DOCX file bytes
 - [POST /documents/{id}/reveal](documents/reveal.md) — Open client folder on disk
 
 ### Dashboard, Settings & Storage
+
 - [GET /dashboard](dashboard/get.md) — Dashboard financial metrics and summaries
 - [GET /settings](settings/get.md) — Get business and banking settings
 - [PUT /settings](settings/update.md) — Update business and banking settings

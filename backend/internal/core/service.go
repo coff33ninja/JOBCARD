@@ -104,11 +104,15 @@ CREATE TABLE IF NOT EXISTS documents(
   intake_items TEXT NOT NULL DEFAULT '[]', diagnostic_sections TEXT NOT NULL DEFAULT '[]',
   authorization TEXT NOT NULL DEFAULT '{}',
   tax_cents INTEGER NOT NULL DEFAULT 0, subtotal_cents INTEGER NOT NULL DEFAULT 0, total_cents INTEGER NOT NULL DEFAULT 0,
-  deposit_cents INTEGER, status TEXT NOT NULL,
+  deposit_cents INTEGER, status TEXT NOT NULL, archived_at TEXT, revision_of_quotation_id TEXT,
   terms TEXT NOT NULL DEFAULT '', exclusions TEXT NOT NULL DEFAULT '', turnaround TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
+CREATE TABLE IF NOT EXISTS document_revisions(
+  id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  recorded_at TEXT NOT NULL, snapshot TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_document_revisions_document ON document_revisions(document_id, recorded_at);
 CREATE TABLE IF NOT EXISTS payments(
   id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id),
   date TEXT NOT NULL, amount_cents INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT NOT NULL DEFAULT '');
@@ -144,6 +148,10 @@ func NewService(dataDir, clientsDir string, today func() string) (*Service, erro
 	if err := ensureDocumentReportColumns(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate document report columns: %w", err)
+	}
+	if err := ensureDocumentLifecycleColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate document lifecycle columns: %w", err)
 	}
 	s := &Service{DB: db, Today: today, DataDir: dataDir, DBPath: dbPath, ClientsDir: clientsDir}
 	def, _ := json.Marshal(defaultSettings())
@@ -254,6 +262,41 @@ func ensureDocumentReportColumns(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func ensureDocumentLifecycleColumns(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(documents)`)
+	if err != nil {
+		return err
+	}
+	found := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, column := range []string{"archived_at", "revision_of_quotation_id"} {
+		if found[column] {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE documents ADD COLUMN ` + column + ` TEXT`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_documents_archived ON documents(archived_at)`)
+	return err
 }
 
 func (s *Service) Close() error { return s.DB.Close() }
@@ -481,15 +524,15 @@ func (s *Service) EnsureClientFolder(clientID string) (string, error) {
 
 // ---------- documents ----------
 
-const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,follow_up_date,reference,scope,work_items,lines,intake_items,diagnostic_sections,authorization,
+const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,follow_up_date,archived_at,revision_of_quotation_id,reference,scope,work_items,lines,intake_items,diagnostic_sections,authorization,
 tax_cents,subtotal_cents,total_cents,deposit_cents,status,terms,exclusions,turnaround,notes,created_at,updated_at`
 
 func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 	var d domain.Doc
-	var number, jc, qu, issue, due, valid, followUp sql.NullString
+	var number, jc, qu, issue, due, valid, followUp, archivedAt, revisionOfQuotation sql.NullString
 	var deposit sql.NullInt64
 	var wi, ln, ii, ds, auth string
-	err := r.Scan(&d.ID, &d.Type, &number, &d.ClientID, &jc, &qu, &issue, &due, &valid, &followUp, &d.Reference, &d.Scope, &wi, &ln,
+	err := r.Scan(&d.ID, &d.Type, &number, &d.ClientID, &jc, &qu, &issue, &due, &valid, &followUp, &archivedAt, &revisionOfQuotation, &d.Reference, &d.Scope, &wi, &ln,
 		&ii, &ds, &auth, &d.TaxCents, &d.SubtotalCents, &d.TotalCents, &deposit, &d.Status, &d.Terms, &d.Exclusions, &d.Turnaround, &d.Notes,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
@@ -498,6 +541,7 @@ func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 	d.Number, d.JobCardID, d.QuotationID = strPtr(number), strPtr(jc), strPtr(qu)
 	d.IssueDate, d.DueDate, d.ValidUntil = strPtr(issue), strPtr(due), strPtr(valid)
 	d.FollowUpDate = strPtr(followUp)
+	d.ArchivedAt, d.RevisionOfQuotationID = strPtr(archivedAt), strPtr(revisionOfQuotation)
 	if deposit.Valid {
 		v := deposit.Int64
 		d.DepositCents = &v
@@ -616,6 +660,7 @@ func (s *Service) GetDocument(id string) (domain.Doc, error) { return s.getDoc(s
 
 type DocFilters struct {
 	Type, Status, ClientID, Q, From, To string
+	Archived                            bool
 }
 
 func (s *Service) ListDocuments(f DocFilters) ([]domain.Doc, error) {
@@ -628,6 +673,9 @@ func (s *Service) ListDocuments(f DocFilters) ([]domain.Doc, error) {
 	out := []domain.Doc{}
 	for i := range docs {
 		d := &docs[i]
+		if (d.ArchivedAt != nil) != f.Archived {
+			continue
+		}
 		if f.Type != "" && d.Type != f.Type {
 			continue
 		}
@@ -662,6 +710,10 @@ func (s *Service) ListDocuments(f DocFilters) ([]domain.Doc, error) {
 	return out, nil
 }
 
+func (s *Service) ListArchivedDocuments() ([]domain.Doc, error) {
+	return s.ListDocuments(DocFilters{Archived: true})
+}
+
 func (s *Service) AllDocuments() ([]domain.Doc, error) { return s.queryDocs(s.DB, ``) }
 
 func insertDoc(q queryer, d *domain.Doc) error {
@@ -670,9 +722,9 @@ func insertDoc(q queryer, d *domain.Doc) error {
 	ii, _ := json.Marshal(d.IntakeItems)
 	ds, _ := json.Marshal(d.DiagnosticSections)
 	auth, _ := json.Marshal(d.Authorization)
-	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.Type, nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
-		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate), d.Reference, d.Scope, string(wi), string(ln),
+		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate), nullStr(d.ArchivedAt), nullStr(d.RevisionOfQuotationID), d.Reference, d.Scope, string(wi), string(ln),
 		string(ii), string(ds), string(auth), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.CreatedAt, d.UpdatedAt)
 	return err
@@ -684,11 +736,11 @@ func updateDoc(q queryer, d *domain.Doc) error {
 	ii, _ := json.Marshal(d.IntakeItems)
 	ds, _ := json.Marshal(d.DiagnosticSections)
 	auth, _ := json.Marshal(d.Authorization)
-	_, err := q.Exec(`UPDATE documents SET number=?,client_id=?,job_card_id=?,quotation_id=?,issue_date=?,due_date=?,valid_until=?,follow_up_date=?,
+	_, err := q.Exec(`UPDATE documents SET number=?,client_id=?,job_card_id=?,quotation_id=?,issue_date=?,due_date=?,valid_until=?,follow_up_date=?,archived_at=?,revision_of_quotation_id=?,
 reference=?,scope=?,work_items=?,lines=?,intake_items=?,diagnostic_sections=?,authorization=?,tax_cents=?,subtotal_cents=?,total_cents=?,deposit_cents=?,status=?,
 terms=?,exclusions=?,turnaround=?,notes=?,updated_at=? WHERE id=?`,
 		nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
-		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate),
+		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate), nullStr(d.ArchivedAt), nullStr(d.RevisionOfQuotationID),
 		d.Reference, d.Scope, string(wi), string(ln), string(ii), string(ds), string(auth), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.UpdatedAt, d.ID)
 	return err
@@ -851,6 +903,22 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 	if d.Number != nil {
 		return d, appErr(http.StatusConflict, "CANNOT_EDIT_ISSUED", "Cannot edit an already issued document")
 	}
+	if d.ArchivedAt != nil || d.Status != "draft" {
+		return d, appErr(http.StatusConflict, "INVALID_STATE", "Restore the draft before editing it")
+	}
+	if err := s.updateDocumentFields(tx, &d, in); err != nil {
+		return d, err
+	}
+	if err := updateDoc(tx, &d); err != nil {
+		return d, err
+	}
+	if err := tx.Commit(); err != nil {
+		return d, err
+	}
+	return s.GetDocument(id)
+}
+
+func (s *Service) updateDocumentFields(tx *sql.Tx, d *domain.Doc, in DraftInput) error {
 	if in.ClientID.Set {
 		cid := in.ClientID.Or("")
 		checkClient := getActiveClient
@@ -858,26 +926,26 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 			checkClient = getClient
 		}
 		if _, err := checkClient(tx, cid); err != nil {
-			return d, invalid("Client not found", map[string]string{"clientId": "Client not found"})
+			return invalid("Client not found", map[string]string{"clientId": "Client not found"})
 		}
 		d.ClientID = cid
 	}
 	if in.Reference.Set {
 		r := strings.TrimSpace(in.Reference.Or(""))
 		if r == "" {
-			return d, invalid("Reference is required", map[string]string{"reference": "Reference is required"})
+			return invalid("Reference is required", map[string]string{"reference": "Reference is required"})
 		}
 		d.Reference = r
 	}
 	if in.JobCardID.Set {
 		if err := s.checkLink(tx, "jobCardId", in.JobCardID.Val, "jobcard"); err != nil {
-			return d, err
+			return err
 		}
 		d.JobCardID = in.JobCardID.Val
 	}
 	if in.QuotationID.Set {
 		if err := s.checkLink(tx, "quotationId", in.QuotationID.Val, "quotation"); err != nil {
-			return d, err
+			return err
 		}
 		d.QuotationID = in.QuotationID.Val
 	}
@@ -894,16 +962,115 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 	if in.Lines.Set {
 		lines := in.Lines.Or(nil)
 		if err := validLines(lines); err != nil {
-			return d, err
+			return err
 		}
 		d.Lines = domain.NormalizeLines(lines)
 	}
 	st, err := getSettings(tx)
 	if err != nil {
-		return d, err
+		return err
 	}
 	t := domain.CalcTotals(d.Lines, st.TaxRate, nil)
 	d.SubtotalCents, d.TaxCents, d.TotalCents = t.Subtotal, t.Tax, t.Total
+	d.UpdatedAt = nowISO()
+	return nil
+}
+
+func hasDocumentChanges(in DraftInput) bool {
+	return in.ClientID.Set || in.Reference.Set || in.Scope.Set || in.JobCardID.Set || in.QuotationID.Set ||
+		in.WorkItems.Set || in.Lines.Set || in.IntakeItems.Set || in.DiagnosticSections.Set ||
+		in.Authorization.Set || in.DepositCents.Set || in.Terms.Set || in.Exclusions.Set ||
+		in.Turnaround.Set || in.Notes.Set
+}
+
+func (s *Service) UpdateIssuedQuotation(id string, in DraftInput, confirm bool) (domain.Doc, error) {
+	if !confirm {
+		return domain.Doc{}, appErr(http.StatusBadRequest, "CONFIRMATION_REQUIRED",
+			"Explicit confirmation is required to revise an issued quotation")
+	}
+	if !hasDocumentChanges(in) {
+		return domain.Doc{}, invalid("At least one quotation field must be provided", map[string]string{"body": "No changes provided"})
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+	d, err := s.getDoc(tx, id)
+	if err != nil {
+		return d, err
+	}
+	if d.Type != "quotation" || d.Number == nil || d.Status != "sent" || d.ArchivedAt != nil {
+		return d, appErr(http.StatusConflict, "INVALID_STATE", "Only an open, issued quotation can be revised in place")
+	}
+	snapshot, err := json.Marshal(d)
+	if err != nil {
+		return d, fmt.Errorf("encode quotation revision snapshot: %w", err)
+	}
+	recordedAt := nowISO()
+	if _, err := tx.Exec(`INSERT INTO document_revisions(id,document_id,recorded_at,snapshot) VALUES(?,?,?,?)`,
+		newID("rev"), d.ID, recordedAt, string(snapshot)); err != nil {
+		return d, err
+	}
+	if err := s.updateDocumentFields(tx, &d, in); err != nil {
+		return d, err
+	}
+	if err := updateDoc(tx, &d); err != nil {
+		return d, err
+	}
+	if err := tx.Commit(); err != nil {
+		return d, err
+	}
+	return s.GetDocument(id)
+}
+
+func (s *Service) ListQuotationRevisions(id string) ([]domain.DocumentRevision, error) {
+	d, err := s.GetDocument(id)
+	if err != nil {
+		return nil, err
+	}
+	if d.Type != "quotation" {
+		return nil, appErr(http.StatusConflict, "INVALID_STATE", "Revision history is available only for quotations")
+	}
+	rows, err := s.DB.Query(`SELECT id,document_id,recorded_at,snapshot FROM document_revisions WHERE document_id=? ORDER BY rowid DESC`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	revisions := []domain.DocumentRevision{}
+	for rows.Next() {
+		var revision domain.DocumentRevision
+		var snapshot string
+		if err := rows.Scan(&revision.ID, &revision.DocumentID, &revision.RecordedAt, &snapshot); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(snapshot), &revision.Snapshot); err != nil {
+			return nil, fmt.Errorf("decode quotation revision snapshot: %w", err)
+		}
+		revisions = append(revisions, revision)
+	}
+	return revisions, rows.Err()
+}
+
+func (s *Service) setDraftArchived(id string, archived bool) (domain.Doc, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+	d, err := s.getDoc(tx, id)
+	if err != nil {
+		return d, err
+	}
+	if d.Number != nil || d.Status != "draft" {
+		return d, appErr(http.StatusConflict, "INVALID_STATE", "Only an unissued draft can be archived or restored")
+	}
+	if archived {
+		timestamp := nowISO()
+		d.ArchivedAt = &timestamp
+	} else {
+		d.ArchivedAt = nil
+	}
 	d.UpdatedAt = nowISO()
 	if err := updateDoc(tx, &d); err != nil {
 		return d, err
@@ -912,6 +1079,84 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 		return d, err
 	}
 	return s.GetDocument(id)
+}
+
+func (s *Service) ArchiveDraft(id string) (domain.Doc, error) {
+	return s.setDraftArchived(id, true)
+}
+
+func (s *Service) RestoreDraft(id string) (domain.Doc, error) {
+	return s.setDraftArchived(id, false)
+}
+
+func (s *Service) DeleteDraft(id string) (domain.Doc, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+	d, err := s.getDoc(tx, id)
+	if err != nil {
+		return d, err
+	}
+	if d.Number != nil || d.Status != "draft" {
+		return d, appErr(http.StatusConflict, "INVALID_STATE", "Only an unissued draft can be permanently deleted")
+	}
+	var references, payments int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM documents WHERE quotation_id=? OR job_card_id=? OR revision_of_quotation_id=?`,
+		id, id, id).Scan(&references); err != nil {
+		return d, err
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM payments WHERE document_id=?`, id).Scan(&payments); err != nil {
+		return d, err
+	}
+	if references > 0 || payments > 0 {
+		return d, appErr(http.StatusConflict, "DOCUMENT_IN_USE", "A linked document or payment prevents this draft from being deleted")
+	}
+	if _, err := tx.Exec(`DELETE FROM documents WHERE id=?`, id); err != nil {
+		return d, err
+	}
+	if err := tx.Commit(); err != nil {
+		return d, err
+	}
+	return d, nil
+}
+
+func (s *Service) CreateReplacementQuotation(id string) (domain.Doc, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	defer tx.Rollback()
+	source, err := s.getDoc(tx, id)
+	if err != nil {
+		return domain.Doc{}, err
+	}
+	if source.Type != "quotation" || source.Number == nil || source.Status != "sent" || source.ArchivedAt != nil {
+		return domain.Doc{}, appErr(http.StatusConflict, "INVALID_STATE", "Only an open, issued quotation can be replaced")
+	}
+	now := nowISO()
+	revisionOf := source.ID
+	replacement := domain.Doc{
+		ID: newID("doc"), Type: "quotation", ClientID: source.ClientID,
+		JobCardID: source.JobCardID, RevisionOfQuotationID: &revisionOf,
+		Reference: source.Reference, Scope: source.Scope,
+		WorkItems:          append([]domain.WorkItem{}, source.WorkItems...),
+		IntakeItems:        append([]domain.IntakeItem{}, source.IntakeItems...),
+		DiagnosticSections: append([]domain.DiagnosticSection{}, source.DiagnosticSections...),
+		Authorization:      source.Authorization, Lines: append([]domain.Line{}, source.Lines...),
+		TaxCents: source.TaxCents, SubtotalCents: source.SubtotalCents, TotalCents: source.TotalCents,
+		DepositCents: source.DepositCents, Payments: []domain.Payment{}, Status: "draft",
+		Terms: source.Terms, Exclusions: source.Exclusions, Turnaround: source.Turnaround, Notes: source.Notes,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := insertDoc(tx, &replacement); err != nil {
+		return domain.Doc{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Doc{}, err
+	}
+	return s.GetDocument(replacement.ID)
 }
 
 func (s *Service) SetFollowUpDate(id string, followUpDate *string) (domain.Doc, error) {
@@ -978,6 +1223,17 @@ func (s *Service) IssueDocument(id, issueDate string) (domain.Doc, error) {
 	if d.Number != nil {
 		return d, appErr(http.StatusConflict, "ALREADY_ISSUED", fmt.Sprintf("Document %s has already been issued with number %s", id, *d.Number))
 	}
+	var replacementSource *domain.Doc
+	if d.RevisionOfQuotationID != nil {
+		source, err := s.getDoc(tx, *d.RevisionOfQuotationID)
+		if err != nil {
+			return d, err
+		}
+		if source.Type != "quotation" || source.Number == nil || source.Status != "sent" || source.ArchivedAt != nil {
+			return d, appErr(http.StatusConflict, "INVALID_STATE", "The source quotation is no longer open; the replacement cannot be issued")
+		}
+		replacementSource = &source
+	}
 	if issueDate == "" {
 		issueDate = s.Today()
 	}
@@ -1015,6 +1271,13 @@ func (s *Service) IssueDocument(id, issueDate string) (domain.Doc, error) {
 	d.UpdatedAt = nowISO()
 	if err := updateDoc(tx, &d); err != nil {
 		return d, err
+	}
+	if replacementSource != nil {
+		replacementSource.Status = "cancelled"
+		replacementSource.UpdatedAt = d.UpdatedAt
+		if err := updateDoc(tx, replacementSource); err != nil {
+			return d, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return d, err
@@ -1154,7 +1417,7 @@ func (s *Service) ConvertQuotation(id string) (domain.Doc, error) {
 // ---------- dashboard / storage ----------
 
 func (s *Service) Dashboard(year int) (domain.Dashboard, error) {
-	docs, err := s.AllDocuments()
+	docs, err := s.ListDocuments(DocFilters{})
 	if err != nil {
 		return domain.Dashboard{}, err
 	}
