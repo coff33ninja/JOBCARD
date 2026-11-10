@@ -76,6 +76,14 @@ test('convertQuotationToInvoice creates draft invoice and marks quotation conver
     reference: 'Dell XPS 15',
     scope: 'Screen replacement',
     workItems: [{ title: 'Screen replace', detail: 'OLED panel' }],
+    intakeItems: [{ label: 'Charger', value: 'Included' }],
+    diagnosticSections: [{ title: 'Screen test', status: 'FAILED', details: 'No display' }],
+    authorization: {
+      technicianSignature: 'Example Technician',
+      technicianDate: '2026-11-01',
+      clientSignature: 'Example Client',
+      clientDate: '2026-11-01',
+    },
     lines: [{ description: 'Panel', qty: 1, unitPriceCents: 450000, totalCents: 450000 }],
     taxCents: 0,
     subtotalCents: 450000,
@@ -101,6 +109,9 @@ test('convertQuotationToInvoice creates draft invoice and marks quotation conver
   assert.equal(invoice.clientId, 'cli-1');
   assert.equal(invoice.followUpDate, null);
   assert.equal(invoice.status, 'draft');
+  assert.deepEqual(invoice.intakeItems, quotation.intakeItems);
+  assert.deepEqual(invoice.diagnosticSections, quotation.diagnosticSections);
+  assert.deepEqual(invoice.authorization, quotation.authorization);
   assert.equal(invoice.lines.length, 1);
   assert.equal(invoice.lines[0].totalCents, 450000);
 });

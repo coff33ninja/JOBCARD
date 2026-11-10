@@ -90,12 +90,19 @@ Money (formatted like R1,000.00)
   {{payment_reference}} {{payment_terms}}
 
 Repeating rows
-  A table row containing any {{line.description}} {{line.qty}} {{line.unit_price}} {{line.total}}
-  is repeated once per line item (put all four in the same row).
+  A table row containing any {{line.*}} placeholder is repeated once per line item
+  (put the line values you need in the same row).
+  {{line.detail}} is the optional secondary description.
   A paragraph containing {{item.text}} (or {{item.title}} / {{item.detail}}) is repeated once per work item.
+  A paragraph containing {{intake_item.label}} and {{intake_item.value}} is repeated once per intake item.
+  A paragraph containing {{diagnostic_section.text}} is repeated once per diagnostic section.
   A paragraph containing {{related}} is repeated once per linked document number (job cards).
+  Authorization placeholders: {{authorization.technician_signature}}, {{authorization.technician_date}},
+  {{authorization.client_signature}}, and {{authorization.client_date}}.
 
 A placeholder that is not recognised is left visible in the output so you can spot a typo.
+The built-in invoice template puts job intake and completed work before FINANCIAL BREAKDOWN,
+then lists diagnostics and authorization after payment details. The financial breakdown starts on page 2.
 `
 
 // DefaultTemplate builds the built-in layout for a document type, using placeholders.
@@ -121,12 +128,27 @@ func DefaultTemplate(docType string) ([]byte, error) {
 		x.heading(title)
 		x.p(para{runs: []run{{text: "\u2022 {{item.text}}"}}, after: 40, indent: 240})
 	}
+	intake := func() {
+		x.heading("INTAKE INVENTORY & EQUIPMENT LOG")
+		x.p(para{runs: []run{{text: "\u2022 {{intake_item.label}}: {{intake_item.value}}"}}, after: 40, indent: 240})
+	}
+	diagnostics := func() {
+		x.heading("TECHNICAL DIAGNOSTIC REPORT")
+		x.p(para{runs: []run{{text: "{{diagnostic_section.text}}"}}, after: 100})
+	}
+	authorization := func() {
+		x.heading("AUTHORIZATION & SIGN-OFF")
+		f("Technician signature", "authorization.technician_signature")
+		f("Technician date", "authorization.technician_date")
+		f("Client signature", "authorization.client_signature")
+		f("Client date", "authorization.client_date")
+	}
 	financials := func(totalLabel string) {
 		x.heading("FINANCIAL BREAKDOWN")
 		head := func(t, a string) cell { return cell{text: t, bold: true, shade: navy, color: "FFFFFF", align: a} }
 		x.raw(table([]int{4400, 1000, 2100, 2138}, [][]cell{
 			{head("Description", ""), head("Qty", "center"), head("Unit price (R)", "right"), head("Total (R)", "right")},
-			{{text: "{{line.description}}"}, {text: "{{line.qty}}", align: "center"}, {text: "{{line.unit_price}}", align: "right"}, {text: "{{line.total}}", align: "right"}},
+			{{text: "{{line.description}}", detail: "{{line.detail}}"}, {text: "{{line.qty}}", align: "center"}, {text: "{{line.unit_price}}", align: "right"}, {text: "{{line.total}}", align: "right"}},
 		}))
 		x.p(para{after: 60})
 		x.right("Subtotal", "{{subtotal}}", false)
@@ -151,11 +173,15 @@ func DefaultTemplate(docType string) ([]byte, error) {
 		f("Payment due", "doc.due_date")
 		f("Related quotation", "doc.related_quotation")
 		clientBlock()
+		intake()
 		items("COMPLETED SERVICES & WORK DONE")
+		x.raw(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`)
 		financials("TOTAL INVOICE AMOUNT")
 		x.right("Payments received", "{{paid}}", false)
 		x.right("BALANCE DUE", "{{balance}}", true)
 		paymentDetails()
+		diagnostics()
+		authorization()
 		x.heading("NOTES & RECOMMENDATIONS")
 		x.text("{{doc.notes}}")
 	case "quotation":
@@ -164,6 +190,7 @@ func DefaultTemplate(docType string) ([]byte, error) {
 		f("Quotation date", "doc.issue_date")
 		f("Valid for", "doc.valid_for")
 		clientBlock()
+		intake()
 		items("PROPOSED SERVICES & WORK TO BE DONE")
 		f("Exclusions / assumptions", "doc.exclusions")
 		f("Estimated turnaround", "doc.turnaround")
@@ -183,9 +210,12 @@ func DefaultTemplate(docType string) ([]byte, error) {
 		f("Date opened", "doc.issue_date")
 		f("Job status", "doc.status")
 		clientBlock()
+		intake()
 		items("WORK LOG")
 		x.heading("LINKED DOCUMENTS")
 		x.p(para{runs: []run{{text: "\u2022 {{related}}"}}, after: 40, indent: 240})
+		diagnostics()
+		authorization()
 		x.heading("NOTES")
 		x.text("{{doc.notes}}")
 	default:

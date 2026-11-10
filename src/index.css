@@ -22,6 +22,11 @@
     min-height: auto !important;
   }
 
+  .invoice-financial-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
   @page {
     size: A4 portrait;
     margin: 15mm;

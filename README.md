@@ -188,7 +188,7 @@ DOCX files are generated in Go. PDF output is produced by converting the DOCX wi
 
 Exports are filled from editable Word templates named `invoice.docx`, `quotation.docx`, and `jobcard.docx` in the configured templates directory. Missing templates are created automatically, existing files are never overwritten, and a `README.txt` next to them lists all supported placeholders such as `{{placeholder}}`.
 
-Open a template in Word, update the layout, fonts, colours, logo, wording, and keep the placeholders in place. A table row containing `{{line.*}}` repeats for each line item; a paragraph with `{{item.text}}` repeats for each work item. Placeholder splits caused by Word line breaks are handled automatically. To reset a template, delete the file and let the app recreate it.
+Open a template in Word, update the layout, fonts, colours, logo, wording, and keep the placeholders in place. A table row containing `{{line.*}}` repeats for each line item; a paragraph with `{{item.text}}` repeats for each work item; and paragraphs containing `{{intake_item.*}}` or `{{diagnostic_section.text}}` repeat for intake and diagnostic details. Line items also support an optional `{{line.detail}}` description, and sign-off fields use `{{authorization.*}}`. The built-in invoice template and browser print output start the financial breakdown on page 2, after the job intake and completed-work summary. Existing templates are never overwritten; add the new placeholders to an existing custom template yourself, or delete `invoice.docx` from the configured templates folder to let the app recreate the built-in version.
 
 ### MCP
 

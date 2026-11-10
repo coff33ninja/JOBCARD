@@ -69,6 +69,8 @@ The client receives documents that look like the business's existing Word templa
 5. `PAYMENT DETAILS` (from settings): bank name, account holder, account number, branch code, payment reference `INV-YYYY-NNN / Client Name`, payment terms.
 6. `NOTES & RECOMMENDATIONS`.
 
+For invoice print/PDF and the built-in Word template, keep the document summary, client/job details, job intake/equipment inventory, and completed work on page 1; start `FINANCIAL BREAKDOWN` on page 2. Follow financial and payment details with diagnostics, recommendations, and technician/client sign-off. Existing editable templates remain untouched; new fields need their placeholders added manually.
+
 **Quotation** — title `QUOTATION & PROPOSED SERVICES`. Same header and client section, with: quotation number, date, validity days and valid-until date; `PROPOSED SERVICES & WORK TO BE DONE` (items, exclusions/assumptions, estimated turnaround); financial table with **TOTAL QUOTED AMOUNT** and "Deposit, if agreed"; payment details with reference `QUO-YYYY-NNN / Client Name` and payment/deposit terms; `TERMS & CLIENT ACCEPTANCE` (terms text, client representative, acceptance signature/approval reference, acceptance date); notes.
 
 **Job card** — internal page: job card number, client, device/reference, scope, work log notes, linked quotation(s) and invoice(s), job status (`open | in_progress | completed | invoiced | closed`).

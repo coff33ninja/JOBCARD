@@ -19,7 +19,8 @@ func sample(docType string) Ctx {
 	d := domain.Doc{
 		ID: "d1", Type: docType, Number: sp("INV-2026-001"), IssueDate: sp("2026-11-08"), DueDate: sp("2026-11-15"),
 		Reference: "Laptop repair", Scope: "Fix screen\nand keyboard", Status: "sent", Notes: "Thank you",
-		WorkItems: []domain.WorkItem{{Title: "Screen", Detail: "Replaced panel"}, {Title: "Keyboard"}},
+		WorkItems:   []domain.WorkItem{{Title: "Screen", Detail: "Replaced panel"}, {Title: "Keyboard"}},
+		IntakeItems: []domain.IntakeItem{{Label: "Power adapter", Value: "Included"}},
 		Lines: []domain.Line{
 			{Description: "Panel & fitting", Qty: 1, UnitPriceCents: 100000, TotalCents: 100000},
 			{Description: "Keyboard", Qty: 2, UnitPriceCents: 25000, TotalCents: 50000},
@@ -90,11 +91,86 @@ func TestDefaultTemplatesRender(t *testing.T) {
 		if !strings.Contains(x, "Acme &lt;Pty&gt; &amp; Co") || !strings.Contains(x, "Example IT") {
 			t.Fatalf("%s: values missing/unescaped", typ)
 		}
+		if !strings.Contains(x, "Power adapter") || !strings.Contains(x, "Included") {
+			t.Fatalf("%s: intake inventory not rendered", typ)
+		}
 		if !strings.Contains(x, "Replaced panel") && typ != "jobcard" || !strings.Contains(x, "Screen: Replaced panel") {
 			t.Fatalf("%s: work items", typ)
 		}
 		if !strings.Contains(x, `Fix screen</w:t><w:br/><w:t xml:space="preserve">and keyboard`) {
 			t.Fatalf("%s: newline not converted to a line break", typ)
+		}
+	}
+}
+
+func TestInvoiceFinancialBreakStartsPageTwo(t *testing.T) {
+	tpl, err := DefaultTemplate("invoice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, warnings, err := Render(tpl, sample("invoice"))
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("render invoice: %v %v", err, warnings)
+	}
+
+	x := part(t, out, "word/document.xml")
+	workIndex := strings.Index(x, "COMPLETED SERVICES &amp; WORK DONE")
+	breakIndex := strings.Index(x, `<w:br w:type="page"/>`)
+	financialIndex := strings.Index(x, "FINANCIAL BREAKDOWN")
+	if workIndex < 0 || breakIndex <= workIndex || financialIndex <= breakIndex {
+		t.Fatalf("invoice page break must follow completed work and precede financials")
+	}
+}
+
+func TestInvoiceTemplateIncludesIntakeDiagnosticsAndSignOff(t *testing.T) {
+	tpl, err := DefaultTemplate("invoice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := part(t, tpl, "word/document.xml")
+	for _, want := range []string{
+		"{{intake_item.label}}",
+		"{{intake_item.value}}",
+		"{{line.detail}}",
+		"{{diagnostic_section.text}}",
+		"{{authorization.technician_signature}}",
+		"{{authorization.technician_date}}",
+		"{{authorization.client_signature}}",
+		"{{authorization.client_date}}",
+	} {
+		if !strings.Contains(x, want) {
+			t.Errorf("invoice template is missing %q", want)
+		}
+	}
+	if strings.Index(x, "{{intake_item.label}}") > strings.Index(x, "{{line.description}}") ||
+		strings.Index(x, "{{line.description}}") > strings.Index(x, "{{diagnostic_section.text}}") {
+		t.Error("invoice template should order intake, financials, then diagnostics")
+	}
+
+	ctx := sample("invoice")
+	ctx.Doc.IntakeItems = []domain.IntakeItem{{Label: "Primary storage", Value: "1TB HDD"}}
+	ctx.Doc.DiagnosticSections = []domain.DiagnosticSection{{
+		Title: "Drive health", Status: "PASSED", Details: "100% health",
+	}}
+	ctx.Doc.Authorization = domain.Authorization{
+		TechnicianSignature: "Technician",
+		TechnicianDate:      "2026-10-12",
+		ClientSignature:     "Client",
+		ClientDate:          "2026-10-12",
+	}
+	ctx.Doc.Lines[0].Detail = "Primary OS drive upgrade"
+	out, warnings, err := Render(tpl, ctx)
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("render report invoice: %v %v", err, warnings)
+	}
+	rendered := part(t, out, "word/document.xml")
+	for _, want := range []string{
+		"Primary storage", "1TB HDD", "Primary OS drive upgrade",
+		"Drive health", "STATUS: PASSED", "100% health",
+		"Technician", "12 October 2026", "Client",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered invoice is missing %q", want)
 		}
 	}
 }

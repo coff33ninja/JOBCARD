@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS documents(
   issue_date TEXT, due_date TEXT, valid_until TEXT, follow_up_date TEXT,
   reference TEXT NOT NULL, scope TEXT NOT NULL DEFAULT '',
   work_items TEXT NOT NULL DEFAULT '[]', lines TEXT NOT NULL DEFAULT '[]',
+  intake_items TEXT NOT NULL DEFAULT '[]', diagnostic_sections TEXT NOT NULL DEFAULT '[]',
+  authorization TEXT NOT NULL DEFAULT '{}',
   tax_cents INTEGER NOT NULL DEFAULT 0, subtotal_cents INTEGER NOT NULL DEFAULT 0, total_cents INTEGER NOT NULL DEFAULT 0,
   deposit_cents INTEGER, status TEXT NOT NULL,
   terms TEXT NOT NULL DEFAULT '', exclusions TEXT NOT NULL DEFAULT '', turnaround TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
@@ -138,6 +140,10 @@ func NewService(dataDir, clientsDir string, today func() string) (*Service, erro
 	if err := ensureClientArchivedAtColumn(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate client archive column: %w", err)
+	}
+	if err := ensureDocumentReportColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate document report columns: %w", err)
 	}
 	s := &Service{DB: db, Today: today, DataDir: dataDir, DBPath: dbPath, ClientsDir: clientsDir}
 	def, _ := json.Marshal(defaultSettings())
@@ -209,6 +215,45 @@ func ensureClientArchivedAtColumn(db *sql.DB) error {
 	}
 	_, err = db.Exec(`ALTER TABLE clients ADD COLUMN archived_at TEXT`)
 	return err
+}
+
+func ensureDocumentReportColumns(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(documents)`)
+	if err != nil {
+		return err
+	}
+	found := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	for _, column := range []struct{ name, definition string }{
+		{"intake_items", `TEXT NOT NULL DEFAULT '[]'`},
+		{"diagnostic_sections", `TEXT NOT NULL DEFAULT '[]'`},
+		{"authorization", `TEXT NOT NULL DEFAULT '{}'`},
+	} {
+		if found[column.name] {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE documents ADD COLUMN ` + column.name + ` ` + column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) Close() error { return s.DB.Close() }
@@ -432,16 +477,16 @@ func (s *Service) EnsureClientFolder(clientID string) (string, error) {
 
 // ---------- documents ----------
 
-const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,follow_up_date,reference,scope,work_items,lines,
+const docCols = `id,type,number,client_id,job_card_id,quotation_id,issue_date,due_date,valid_until,follow_up_date,reference,scope,work_items,lines,intake_items,diagnostic_sections,authorization,
 tax_cents,subtotal_cents,total_cents,deposit_cents,status,terms,exclusions,turnaround,notes,created_at,updated_at`
 
 func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 	var d domain.Doc
 	var number, jc, qu, issue, due, valid, followUp sql.NullString
 	var deposit sql.NullInt64
-	var wi, ln string
+	var wi, ln, ii, ds, auth string
 	err := r.Scan(&d.ID, &d.Type, &number, &d.ClientID, &jc, &qu, &issue, &due, &valid, &followUp, &d.Reference, &d.Scope, &wi, &ln,
-		&d.TaxCents, &d.SubtotalCents, &d.TotalCents, &deposit, &d.Status, &d.Terms, &d.Exclusions, &d.Turnaround, &d.Notes,
+		&ii, &ds, &auth, &d.TaxCents, &d.SubtotalCents, &d.TotalCents, &deposit, &d.Status, &d.Terms, &d.Exclusions, &d.Turnaround, &d.Notes,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return d, err
@@ -454,13 +499,33 @@ func scanDoc(r interface{ Scan(...any) error }) (domain.Doc, error) {
 		d.DepositCents = &v
 	}
 	d.WorkItems, d.Lines = []domain.WorkItem{}, []domain.Line{}
-	_ = json.Unmarshal([]byte(wi), &d.WorkItems)
-	_ = json.Unmarshal([]byte(ln), &d.Lines)
+	d.IntakeItems, d.DiagnosticSections = []domain.IntakeItem{}, []domain.DiagnosticSection{}
+	for _, field := range []struct {
+		name string
+		data string
+		dest any
+	}{
+		{"work items", wi, &d.WorkItems},
+		{"line items", ln, &d.Lines},
+		{"intake items", ii, &d.IntakeItems},
+		{"diagnostic sections", ds, &d.DiagnosticSections},
+		{"authorization", auth, &d.Authorization},
+	} {
+		if err := json.Unmarshal([]byte(field.data), field.dest); err != nil {
+			return d, fmt.Errorf("decode document %s: %w", field.name, err)
+		}
+	}
 	if d.WorkItems == nil {
 		d.WorkItems = []domain.WorkItem{}
 	}
 	if d.Lines == nil {
 		d.Lines = []domain.Line{}
+	}
+	if d.IntakeItems == nil {
+		d.IntakeItems = []domain.IntakeItem{}
+	}
+	if d.DiagnosticSections == nil {
+		d.DiagnosticSections = []domain.DiagnosticSection{}
 	}
 	d.Payments = []domain.Payment{}
 	return d, nil
@@ -598,10 +663,13 @@ func (s *Service) AllDocuments() ([]domain.Doc, error) { return s.queryDocs(s.DB
 func insertDoc(q queryer, d *domain.Doc) error {
 	wi, _ := json.Marshal(d.WorkItems)
 	ln, _ := json.Marshal(d.Lines)
-	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	ii, _ := json.Marshal(d.IntakeItems)
+	ds, _ := json.Marshal(d.DiagnosticSections)
+	auth, _ := json.Marshal(d.Authorization)
+	_, err := q.Exec(`INSERT INTO documents(`+docCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.Type, nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
 		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate), d.Reference, d.Scope, string(wi), string(ln),
-		d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
+		string(ii), string(ds), string(auth), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.CreatedAt, d.UpdatedAt)
 	return err
 }
@@ -609,30 +677,36 @@ func insertDoc(q queryer, d *domain.Doc) error {
 func updateDoc(q queryer, d *domain.Doc) error {
 	wi, _ := json.Marshal(d.WorkItems)
 	ln, _ := json.Marshal(d.Lines)
+	ii, _ := json.Marshal(d.IntakeItems)
+	ds, _ := json.Marshal(d.DiagnosticSections)
+	auth, _ := json.Marshal(d.Authorization)
 	_, err := q.Exec(`UPDATE documents SET number=?,client_id=?,job_card_id=?,quotation_id=?,issue_date=?,due_date=?,valid_until=?,follow_up_date=?,
-reference=?,scope=?,work_items=?,lines=?,tax_cents=?,subtotal_cents=?,total_cents=?,deposit_cents=?,status=?,
+reference=?,scope=?,work_items=?,lines=?,intake_items=?,diagnostic_sections=?,authorization=?,tax_cents=?,subtotal_cents=?,total_cents=?,deposit_cents=?,status=?,
 terms=?,exclusions=?,turnaround=?,notes=?,updated_at=? WHERE id=?`,
 		nullStr(d.Number), d.ClientID, nullStr(d.JobCardID), nullStr(d.QuotationID),
 		nullStr(d.IssueDate), nullStr(d.DueDate), nullStr(d.ValidUntil), nullStr(d.FollowUpDate),
-		d.Reference, d.Scope, string(wi), string(ln), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
+		d.Reference, d.Scope, string(wi), string(ln), string(ii), string(ds), string(auth), d.TaxCents, d.SubtotalCents, d.TotalCents, nullInt(d.DepositCents), d.Status,
 		d.Terms, d.Exclusions, d.Turnaround, d.Notes, d.UpdatedAt, d.ID)
 	return err
 }
 
 type DraftInput struct {
-	Type         Opt[string]            `json:"type"`
-	ClientID     Opt[string]            `json:"clientId"`
-	Reference    Opt[string]            `json:"reference"`
-	Scope        Opt[string]            `json:"scope"`
-	JobCardID    Opt[string]            `json:"jobCardId"`
-	QuotationID  Opt[string]            `json:"quotationId"`
-	WorkItems    Opt[[]domain.WorkItem] `json:"workItems"`
-	Lines        Opt[[]domain.Line]     `json:"lines"`
-	DepositCents Opt[int64]             `json:"depositCents"`
-	Terms        Opt[string]            `json:"terms"`
-	Exclusions   Opt[string]            `json:"exclusions"`
-	Turnaround   Opt[string]            `json:"turnaround"`
-	Notes        Opt[string]            `json:"notes"`
+	Type               Opt[string]                     `json:"type"`
+	ClientID           Opt[string]                     `json:"clientId"`
+	Reference          Opt[string]                     `json:"reference"`
+	Scope              Opt[string]                     `json:"scope"`
+	JobCardID          Opt[string]                     `json:"jobCardId"`
+	QuotationID        Opt[string]                     `json:"quotationId"`
+	WorkItems          Opt[[]domain.WorkItem]          `json:"workItems"`
+	Lines              Opt[[]domain.Line]              `json:"lines"`
+	IntakeItems        Opt[[]domain.IntakeItem]        `json:"intakeItems"`
+	DiagnosticSections Opt[[]domain.DiagnosticSection] `json:"diagnosticSections"`
+	Authorization      Opt[domain.Authorization]       `json:"authorization"`
+	DepositCents       Opt[int64]                      `json:"depositCents"`
+	Terms              Opt[string]                     `json:"terms"`
+	Exclusions         Opt[string]                     `json:"exclusions"`
+	Turnaround         Opt[string]                     `json:"turnaround"`
+	Notes              Opt[string]                     `json:"notes"`
 }
 
 func validLines(lines []domain.Line) error {
@@ -716,7 +790,10 @@ func (s *Service) CreateDraft(in DraftInput) (domain.Doc, error) {
 		ID: newID("doc"), Type: typ, ClientID: cid, JobCardID: jc, QuotationID: qu,
 		Reference: ref, Scope: strings.TrimSpace(in.Scope.Or("")),
 		WorkItems: in.WorkItems.Or([]domain.WorkItem{}), Lines: lines,
-		TaxCents: t.Tax, SubtotalCents: t.Subtotal, TotalCents: t.Total, DepositCents: in.DepositCents.Val,
+		IntakeItems:        in.IntakeItems.Or([]domain.IntakeItem{}),
+		DiagnosticSections: in.DiagnosticSections.Or([]domain.DiagnosticSection{}),
+		Authorization:      in.Authorization.Or(domain.Authorization{}),
+		TaxCents:           t.Tax, SubtotalCents: t.Subtotal, TotalCents: t.Total, DepositCents: in.DepositCents.Val,
 		Payments: []domain.Payment{}, Status: "draft",
 		Terms: in.Terms.Or(""), Exclusions: in.Exclusions.Or(""), Turnaround: in.Turnaround.Or(""), Notes: in.Notes.Or(""),
 		CreatedAt: now, UpdatedAt: now,
@@ -772,6 +849,9 @@ func (s *Service) UpdateDraft(id string, in DraftInput) (domain.Doc, error) {
 	}
 	d.Scope = strings.TrimSpace(in.Scope.Or(d.Scope))
 	d.WorkItems = in.WorkItems.Or(d.WorkItems)
+	d.IntakeItems = in.IntakeItems.Or(d.IntakeItems)
+	d.DiagnosticSections = in.DiagnosticSections.Or(d.DiagnosticSections)
+	d.Authorization = in.Authorization.Or(d.Authorization)
 	if in.DepositCents.Set {
 		d.DepositCents = in.DepositCents.Val
 	}

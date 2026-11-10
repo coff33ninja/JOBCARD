@@ -6,6 +6,9 @@ import {
   Cents,
   LineItem,
   WorkItem,
+  IntakeItem,
+  DiagnosticSection,
+  Authorization,
   Settings,
   Storage,
   Capabilities,
@@ -38,6 +41,9 @@ export interface CreateDraftInput {
   jobCardId?: string | null;
   quotationId?: string | null;
   workItems?: WorkItem[];
+  intakeItems?: IntakeItem[];
+  diagnosticSections?: DiagnosticSection[];
+  authorization?: Authorization;
   lines?: LineItem[];
   depositCents?: Cents | null;
   terms?: string;

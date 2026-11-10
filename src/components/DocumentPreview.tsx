@@ -166,6 +166,23 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         </div>
       </section>
 
+      {/* Job Intake & Equipment Inventory */}
+      {doc.intakeItems && doc.intakeItems.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider bg-slate-100 px-3 py-1.5 border-l-4 border-slate-800 mb-3">
+            JOB INTAKE & EQUIPMENT INVENTORY
+          </h2>
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-sm">
+            {doc.intakeItems.map((item, idx) => (
+              <div key={idx} className="p-3 text-xs flex items-start gap-3">
+                <span className="font-bold text-slate-800 shrink-0 w-36">{item.label}:</span>
+                <span className="text-slate-600 whitespace-pre-wrap">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Section 3: Work Items (Completed Services or Proposed Work) */}
       {doc.workItems && doc.workItems.length > 0 && (
         <section className="mb-6">
@@ -197,7 +214,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
       {/* Section 4: Financial Breakdown Table */}
       {doc.type !== 'jobcard' && (
-        <section className="mb-6">
+        <section className={`mb-6 ${doc.type === 'invoice' ? 'invoice-financial-break' : ''}`}>
           <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider bg-slate-100 px-3 py-1.5 border-l-4 border-slate-800 mb-3">
             FINANCIAL BREAKDOWN
           </h2>
@@ -214,7 +231,14 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               {doc.lines && doc.lines.length > 0 ? (
                 doc.lines.map((line, idx) => (
                   <tr key={idx} className="text-slate-800">
-                    <td className="py-2.5 pr-2 font-medium">{line.description}</td>
+                    <td className="py-2.5 pr-2 font-medium">
+                      {line.description}
+                      {line.detail && (
+                        <span className="block mt-0.5 text-[11px] font-normal text-slate-600 whitespace-pre-wrap">
+                          {line.detail}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2.5 text-center text-slate-600">{line.qty}</td>
                     <td className="py-2.5 text-right font-mono">{formatCents(line.unitPriceCents)}</td>
                     <td className="py-2.5 text-right font-mono font-semibold">
@@ -345,6 +369,63 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   {doc.terms}
                 </p>
               )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Diagnostic Findings & Resolution */}
+      {doc.diagnosticSections && doc.diagnosticSections.length > 0 && (
+        <section className="mb-6 pt-4 border-t border-slate-200">
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
+            DIAGNOSTIC FINDINGS & RESOLUTION
+          </h2>
+          <div className="space-y-3">
+            {doc.diagnosticSections.map((section, idx) => (
+              <div key={idx} className="break-inside-avoid border border-slate-200 rounded-sm p-3 text-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-bold text-slate-800">{section.title || 'Report section'}</h3>
+                  {section.status && (
+                    <span className="shrink-0 font-semibold text-slate-600 uppercase text-[10px]">
+                      {section.status}
+                    </span>
+                  )}
+                </div>
+                {section.details && (
+                  <p className="mt-2 text-slate-600 leading-relaxed whitespace-pre-wrap">
+                    {section.details}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Authorization & Sign-off */}
+      {doc.type !== 'quotation' && (
+        <section className="mb-6 pt-4 border-t border-slate-200 text-xs break-inside-avoid">
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
+            AUTHORIZATION & SIGN-OFF
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <p className="font-semibold text-slate-700">Technician</p>
+              <p className="min-h-6 border-b border-slate-300 pb-1">
+                {doc.authorization?.technicianSignature || ''}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Date: {doc.authorization?.technicianDate || '________________'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <p className="font-semibold text-slate-700">Client</p>
+              <p className="min-h-6 border-b border-slate-300 pb-1">
+                {doc.authorization?.clientSignature || ''}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Date: {doc.authorization?.clientDate || '________________'}
+              </p>
             </div>
           </div>
         </section>

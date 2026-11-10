@@ -202,6 +202,32 @@ func renderPart(name, x string, c Ctx, vals map[string]string, unknown map[strin
 					b.WriteString(fillAll(p, map[string]string{"item.text": itemText(w), "item.title": w.Title, "item.detail": w.Detail}, ignore))
 				}
 				return b.String()
+			case strings.Contains(p, "{{intake_item."):
+				items := c.Doc.IntakeItems
+				if len(items) == 0 {
+					return fillAll(p, map[string]string{
+						"intake_item.label": "No intake details recorded",
+						"intake_item.value": "",
+					}, ignore)
+				}
+				var b strings.Builder
+				for _, item := range items {
+					b.WriteString(fillAll(p, map[string]string{
+						"intake_item.label": item.Label,
+						"intake_item.value": item.Value,
+					}, ignore))
+				}
+				return b.String()
+			case strings.Contains(p, "{{diagnostic_section."):
+				sections := c.Doc.DiagnosticSections
+				if len(sections) == 0 {
+					return fillAll(p, map[string]string{"diagnostic_section.text": "No diagnostic details recorded."}, ignore)
+				}
+				var b strings.Builder
+				for _, section := range sections {
+					b.WriteString(fillAll(p, map[string]string{"diagnostic_section.text": diagnosticText(section)}, ignore))
+				}
+				return b.String()
 			case strings.Contains(p, "{{related}}"):
 				rel := c.Related
 				if len(rel) == 0 {

@@ -30,6 +30,7 @@ const ClientSchema = z.object({
 
 const LineItemSchema = z.object({
   description: z.string(),
+  detail: z.string().optional(),
   qty: z.number(),
   unitPriceCents: z.number(),
   totalCents: z.number(),
@@ -48,6 +49,24 @@ const WorkItemSchema = z.object({
   detail: z.string(),
 });
 
+const IntakeItemSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
+const DiagnosticSectionSchema = z.object({
+  title: z.string(),
+  status: z.string(),
+  details: z.string(),
+});
+
+const AuthorizationSchema = z.object({
+  technicianSignature: z.string(),
+  technicianDate: z.string(),
+  clientSignature: z.string(),
+  clientDate: z.string(),
+});
+
 const DocSchema = z.object({
   id: z.string(),
   type: z.enum(['quotation', 'invoice', 'jobcard']),
@@ -62,6 +81,9 @@ const DocSchema = z.object({
   reference: z.string(),
   scope: z.string(),
   workItems: z.array(WorkItemSchema),
+  intakeItems: z.array(IntakeItemSchema),
+  diagnosticSections: z.array(DiagnosticSectionSchema),
+  authorization: AuthorizationSchema,
   lines: z.array(LineItemSchema),
   taxCents: z.number(),
   subtotalCents: z.number(),

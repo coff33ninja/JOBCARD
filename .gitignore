@@ -24,3 +24,4 @@ backend/cmd/jobcard/dist/*
 backups/
 .vscode/mcp.json
 .cursor/mcp.json
+Samples/

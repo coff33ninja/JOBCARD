@@ -106,6 +106,75 @@ func TestToolsListMatchesRegistryAndHidesSettingsWrite(t *testing.T) {
 	}
 }
 
+func TestDraftToolsExposeAndPersistReportFields(t *testing.T) {
+	s := newServer(t)
+	response := rpc(t, s, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	tools := response[0]["result"].(map[string]any)["tools"].([]any)
+	for _, entry := range tools {
+		tool := entry.(map[string]any)
+		name := tool["name"].(string)
+		if name != "create_draft" && name != "update_draft" {
+			continue
+		}
+		schema := tool["inputSchema"].(map[string]any)
+		properties := schema["properties"].(map[string]any)
+		for _, field := range []string{"intakeItems", "diagnosticSections", "authorization"} {
+			if _, ok := properties[field]; !ok {
+				t.Errorf("%s input schema is missing %s", name, field)
+			}
+		}
+		lines := properties["lines"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		if _, ok := lines["detail"]; !ok {
+			t.Errorf("%s line schema is missing detail", name)
+		}
+	}
+
+	text, isErr := call(t, s, 2, "create_client", map[string]any{"name": "Report Client"})
+	if isErr {
+		t.Fatal(text)
+	}
+	var client struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(text), &client); err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr = call(t, s, 3, "create_draft", map[string]any{
+		"type": "invoice", "clientId": client.ID, "reference": "Laptop",
+		"intakeItems":        []map[string]string{{"label": "Charger", "value": "Received"}},
+		"diagnosticSections": []map[string]string{{"title": "Battery test", "status": "FAILED", "details": "No charge"}},
+		"authorization":      map[string]string{"technicianSignature": "Tech", "technicianDate": "2026-11-10", "clientSignature": "Client", "clientDate": "2026-11-10"},
+		"lines":              []map[string]any{{"description": "Battery", "detail": "OEM replacement", "qty": 1, "unitPriceCents": 1000}},
+	})
+	if isErr {
+		t.Fatal(text)
+	}
+	var document struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(text), &document); err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr = call(t, s, 4, "update_draft", map[string]any{
+		"id":          document.ID,
+		"intakeItems": []map[string]string{{"label": "Power adapter", "value": "Included"}},
+	})
+	if isErr {
+		t.Fatal(text)
+	}
+	got, err := s.Svc.GetDocument(document.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.IntakeItems) != 1 || got.IntakeItems[0].Label != "Power adapter" ||
+		len(got.DiagnosticSections) != 1 || got.DiagnosticSections[0].Details != "No charge" ||
+		got.Authorization.TechnicianSignature != "Tech" || len(got.Lines) != 1 || got.Lines[0].Detail != "OEM replacement" {
+		t.Fatalf("MCP report fields were not persisted as expected: %+v", got)
+	}
+}
+
 func TestArchivedClientsCanBeRestored(t *testing.T) {
 	s := newServer(t)
 	text, isErr := call(t, s, 1, "create_client", map[string]any{"name": "Archive Test"})

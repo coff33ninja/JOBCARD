@@ -71,6 +71,16 @@ export function convertQuotationToInvoice(
     reference: quotation.reference,
     scope: quotation.scope,
     workItems: quotation.workItems ? JSON.parse(JSON.stringify(quotation.workItems)) : [],
+    intakeItems: quotation.intakeItems ? JSON.parse(JSON.stringify(quotation.intakeItems)) : [],
+    diagnosticSections: quotation.diagnosticSections
+      ? JSON.parse(JSON.stringify(quotation.diagnosticSections))
+      : [],
+    authorization: quotation.authorization ? { ...quotation.authorization } : {
+      technicianSignature: '',
+      technicianDate: '',
+      clientSignature: '',
+      clientDate: '',
+    },
     lines: quotation.lines ? JSON.parse(JSON.stringify(quotation.lines)) : [],
     taxCents: quotation.taxCents,
     subtotalCents: quotation.subtotalCents,

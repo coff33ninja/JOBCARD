@@ -55,8 +55,24 @@ var draftProps = func() map[string]any {
 		"jobCardId":   str("ID (not number) of the related job card, or null to clear"),
 		"quotationId": str("ID of the related quotation, or null to clear"),
 		"workItems":   arr(obj(map[string]any{"title": str("Item"), "detail": str("What was or will be done")}, "title"), "Work done / proposed"),
+		"intakeItems": arr(obj(map[string]any{
+			"label": str("Equipment or intake item"),
+			"value": str("Received condition, accessories or notes"),
+		}, "label", "value"), "Equipment and condition received from the client"),
+		"diagnosticSections": arr(obj(map[string]any{
+			"title":   str("Diagnostic or report section title"),
+			"status":  str("Status or outcome"),
+			"details": str("Tests performed, findings, diagnosis or resolution"),
+		}, "title", "status", "details"), "Diagnostic findings and resolution sections"),
+		"authorization": obj(map[string]any{
+			"technicianSignature": str("Technician signature or name"),
+			"technicianDate":      str("Technician sign-off date (YYYY-MM-DD)"),
+			"clientSignature":     str("Client signature or name"),
+			"clientDate":          str("Client sign-off date (YYYY-MM-DD)"),
+		}, "technicianSignature", "technicianDate", "clientSignature", "clientDate"),
 		"lines": arr(obj(map[string]any{
 			"description":    str("Line description"),
+			"detail":         str("Optional secondary line description"),
 			"qty":            num("Quantity, greater than 0"),
 			"unitPriceCents": integer("Unit price in cents, excluding tax"),
 		}, "description", "qty", "unitPriceCents"), "Line items. Totals are computed by the server."),
@@ -191,7 +207,7 @@ func (s *Server) tools() []tool {
 				}
 				return svc.GetDocument(id.ID)
 			}},
-		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card. Drafts have no number yet and can be edited.", Write: true,
+		{Name: "create_draft", Description: "Create a draft quotation, invoice or job card, including intake inventory, diagnostics, line details and authorization fields. Drafts have no number yet and can be edited.", Write: true,
 			Schema: obj(withProps(draftProps(), map[string]any{
 				"type":     enum("Document type", "quotation", "invoice", "jobcard"),
 				"clientId": str("Client ID (use list_clients or create_client first)"),
@@ -203,7 +219,7 @@ func (s *Server) tools() []tool {
 				}
 				return svc.CreateDraft(in)
 			}},
-		{Name: "update_draft", Description: "Edit a draft. Only fields you send change; line items are replaced as a whole. Issued documents cannot be edited.", Write: true,
+		{Name: "update_draft", Description: "Edit a draft, including intake inventory, diagnostics, line details and authorization fields. Only fields you send change; arrays and authorization objects are replaced as a whole. Issued documents cannot be edited.", Write: true,
 			Schema: obj(withProps(draftProps(), map[string]any{"id": str("Document ID"), "clientId": str("Client ID")}), "id"),
 			Run: func(a json.RawMessage) (any, error) {
 				var id idArgs

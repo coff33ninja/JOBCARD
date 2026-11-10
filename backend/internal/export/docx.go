@@ -91,11 +91,12 @@ func (p para) xml() string {
 }
 
 type cell struct {
-	text  string
-	bold  bool
-	align string
-	shade string
-	color string
+	text   string
+	detail string
+	bold   bool
+	align  string
+	shade  string
+	color  string
 }
 
 func table(widths []int, rows [][]cell) string {
@@ -123,6 +124,9 @@ func table(widths []int, rows [][]cell) string {
 			}
 			b.WriteString(fmt.Sprintf(`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s</w:tcPr>`, widths[i], shade))
 			b.WriteString(para{runs: []run{{text: c.text, bold: c.bold, color: c.color}}, align: c.align, before: 40, after: 40}.xml())
+			if c.detail != "" {
+				b.WriteString(para{runs: []run{{text: c.detail, italic: true, size: 18, color: "666666"}}, after: 40}.xml())
+			}
 			b.WriteString(`</w:tc>`)
 		}
 		b.WriteString(`</w:tr>`)
@@ -164,6 +168,37 @@ func itemText(w domain.WorkItem) string {
 		return w.Title
 	}
 	return w.Title + ": " + w.Detail
+}
+
+func diagnosticText(section domain.DiagnosticSection) string {
+	var parts []string
+	if title := strings.TrimSpace(section.Title); title != "" {
+		parts = append(parts, title)
+	}
+	if status := strings.TrimSpace(section.Status); status != "" {
+		parts = append(parts, "STATUS: "+status)
+	}
+	if details := strings.TrimSpace(section.Details); details != "" {
+		parts = append(parts, details)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func signatureLine(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "______________________________"
+	}
+	return value
+}
+
+func signOffDate(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "______________________________"
+	}
+	if parsed, err := domain.ParseDate(value); err == nil {
+		return parsed.Format("2 January 2006")
+	}
+	return value
 }
 
 // Values returns every {{placeholder}} the document-level templates understand.
@@ -224,7 +259,11 @@ func (c Ctx) Values() map[string]string {
 		"doc.status": d.Status, "doc.terms": dash(d.Terms), "doc.exclusions": dash(d.Exclusions), "doc.turnaround": dash(d.Turnaround),
 		"doc.notes": dash(d.Notes), "doc.related_quotation": rq, "doc.job_card": dash(c.JobCardNumber),
 		"client.name": dash(cl.Name), "client.contact": dash(cl.Contact), "client.phone": dash(cl.Phone), "client.email": dash(cl.Email), "client.address": dash(cl.Address),
-		"stamp": stampText, "stamp.color": stampCol, "stamp.strike": stampStrike,
+		"authorization.technician_signature": signatureLine(d.Authorization.TechnicianSignature),
+		"authorization.technician_date":      signOffDate(d.Authorization.TechnicianDate),
+		"authorization.client_signature":     signatureLine(d.Authorization.ClientSignature),
+		"authorization.client_date":          signOffDate(d.Authorization.ClientDate),
+		"stamp":                              stampText, "stamp.color": stampCol, "stamp.strike": stampStrike,
 		"subtotal": domain.FormatCents(d.SubtotalCents), "tax_label": vat, "tax": domain.FormatCents(d.TaxCents), "total": domain.FormatCents(d.TotalCents),
 		"paid": domain.FormatCents(paid), "balance": domain.FormatCents(d.TotalCents - paid), "deposit": deposit,
 		"payment_reference": num + " / " + cl.Name, "payment_terms": terms,
@@ -233,7 +272,7 @@ func (c Ctx) Values() map[string]string {
 
 func (c Ctx) lineValues(l domain.Line) map[string]string {
 	return map[string]string{
-		"line.description": l.Description, "line.qty": trimFloat(l.Qty),
+		"line.description": l.Description, "line.detail": l.Detail, "line.qty": trimFloat(l.Qty),
 		"line.unit_price": money(l.UnitPriceCents), "line.total": money(l.TotalCents),
 	}
 }

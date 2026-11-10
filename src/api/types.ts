@@ -13,6 +13,7 @@ export interface Client {
 
 export interface LineItem {
   description: string;
+  detail?: string;
   qty: number;
   unitPriceCents: Cents;
   totalCents: Cents;
@@ -33,6 +34,24 @@ export interface WorkItem {
   detail: string;
 }
 
+export interface IntakeItem {
+  label: string;
+  value: string;
+}
+
+export interface DiagnosticSection {
+  title: string;
+  status: string;
+  details: string;
+}
+
+export interface Authorization {
+  technicianSignature: string;
+  technicianDate: string;
+  clientSignature: string;
+  clientDate: string;
+}
+
 export interface Doc {
   id: string;
   type: DocType;
@@ -47,6 +66,9 @@ export interface Doc {
   reference: string; // device / serial / job reference text
   scope: string;
   workItems: WorkItem[]; // completed or proposed work
+  intakeItems: IntakeItem[];
+  diagnosticSections: DiagnosticSection[];
+  authorization: Authorization;
   lines: LineItem[];
   taxCents: Cents;
   subtotalCents: Cents;

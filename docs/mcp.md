@@ -23,6 +23,8 @@ Restart Claude Desktop. Logs are written to `%APPDATA%\JobCardLauncher\jobcard.l
 
 Names match `mcpTool` in `src/api/endpoints.ts`. Money is always integer cents; the server computes totals.
 
+`create_draft` and `update_draft` support the same report fields as the editor: `intakeItems` (`label`, `value`), `diagnosticSections` (`title`, `status`, `details`), `authorization` (`technicianSignature`, `technicianDate`, `clientSignature`, `clientDate`), and the optional `lines[].detail`. When updating, send complete replacement arrays and a complete authorization object. `get_document` returns these fields, and `export_document` includes them using the built-in template or matching placeholders in a custom template.
+
 | Tool | What it does | Needs `confirm=true` |
 |---|---|---|
 | `list_clients`, `list_archived_clients` | List active or archived clients | no |

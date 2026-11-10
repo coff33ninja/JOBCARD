@@ -23,6 +23,7 @@ type Client struct {
 
 type Line struct {
 	Description    string  `json:"description"`
+	Detail         string  `json:"detail,omitempty"`
 	Qty            float64 `json:"qty"`
 	UnitPriceCents int64   `json:"unitPriceCents"`
 	TotalCents     int64   `json:"totalCents"`
@@ -41,34 +42,55 @@ type WorkItem struct {
 	Detail string `json:"detail"`
 }
 
+type IntakeItem struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+type DiagnosticSection struct {
+	Title   string `json:"title"`
+	Status  string `json:"status"`
+	Details string `json:"details"`
+}
+
+type Authorization struct {
+	TechnicianSignature string `json:"technicianSignature"`
+	TechnicianDate      string `json:"technicianDate"`
+	ClientSignature     string `json:"clientSignature"`
+	ClientDate          string `json:"clientDate"`
+}
+
 type Doc struct {
-	ID            string     `json:"id"`
-	Type          string     `json:"type"`
-	Number        *string    `json:"number"`
-	ClientID      string     `json:"clientId"`
-	JobCardID     *string    `json:"jobCardId"`
-	QuotationID   *string    `json:"quotationId"`
-	IssueDate     *string    `json:"issueDate"`
-	DueDate       *string    `json:"dueDate"`
-	ValidUntil    *string    `json:"validUntil"`
-	FollowUpDate  *string    `json:"followUpDate"`
-	Reference     string     `json:"reference"`
-	Scope         string     `json:"scope"`
-	WorkItems     []WorkItem `json:"workItems"`
-	Lines         []Line     `json:"lines"`
-	TaxCents      int64      `json:"taxCents"`
-	SubtotalCents int64      `json:"subtotalCents"`
-	TotalCents    int64      `json:"totalCents"`
-	DepositCents  *int64     `json:"depositCents"`
-	Payments      []Payment  `json:"payments"`
-	Status        string     `json:"status"`
-	Terms         string     `json:"terms"`
-	Exclusions    string     `json:"exclusions"`
-	Turnaround    string     `json:"turnaround"`
-	Notes         string     `json:"notes"`
-	FolderPath    *string    `json:"folderPath"`
-	CreatedAt     string     `json:"createdAt"`
-	UpdatedAt     string     `json:"updatedAt"`
+	ID                 string              `json:"id"`
+	Type               string              `json:"type"`
+	Number             *string             `json:"number"`
+	ClientID           string              `json:"clientId"`
+	JobCardID          *string             `json:"jobCardId"`
+	QuotationID        *string             `json:"quotationId"`
+	IssueDate          *string             `json:"issueDate"`
+	DueDate            *string             `json:"dueDate"`
+	ValidUntil         *string             `json:"validUntil"`
+	FollowUpDate       *string             `json:"followUpDate"`
+	Reference          string              `json:"reference"`
+	Scope              string              `json:"scope"`
+	WorkItems          []WorkItem          `json:"workItems"`
+	IntakeItems        []IntakeItem        `json:"intakeItems"`
+	DiagnosticSections []DiagnosticSection `json:"diagnosticSections"`
+	Authorization      Authorization       `json:"authorization"`
+	Lines              []Line              `json:"lines"`
+	TaxCents           int64               `json:"taxCents"`
+	SubtotalCents      int64               `json:"subtotalCents"`
+	TotalCents         int64               `json:"totalCents"`
+	DepositCents       *int64              `json:"depositCents"`
+	Payments           []Payment           `json:"payments"`
+	Status             string              `json:"status"`
+	Terms              string              `json:"terms"`
+	Exclusions         string              `json:"exclusions"`
+	Turnaround         string              `json:"turnaround"`
+	Notes              string              `json:"notes"`
+	FolderPath         *string             `json:"folderPath"`
+	CreatedAt          string              `json:"createdAt"`
+	UpdatedAt          string              `json:"updatedAt"`
 }
 
 type Settings struct {

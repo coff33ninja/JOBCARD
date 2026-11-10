@@ -17,6 +17,9 @@ Body:
 - `jobCardId` (string, optional)
 - `quotationId` (string, optional)
 - `workItems` (WorkItem[], optional)
+- `intakeItems` (`{ label: string, value: string }[]`, optional): equipment and condition received
+- `diagnosticSections` (`{ title: string, status: string, details: string }[]`, optional)
+- `authorization` (`{ technicianSignature, technicianDate, clientSignature, clientDate }`, optional; all values are strings)
 - `lines` (LineItem[], optional)
 - `depositCents` (Cents, optional)
 - `terms` (string, optional)
@@ -48,7 +51,15 @@ Request: `POST /api/v1/documents`
   "clientId": "cli-1",
   "reference": "Dell Latitude 5420",
   "scope": "Battery replacement",
-  "lines": [{ "description": "OEM Battery", "qty": 1, "unitPriceCents": 120000, "totalCents": 120000 }]
+  "intakeItems": [{ "label": "Charger", "value": "Received with laptop" }],
+  "diagnosticSections": [{ "title": "Battery test", "status": "FAILED", "details": "Battery does not hold charge." }],
+  "authorization": {
+    "technicianSignature": "Example Technician",
+    "technicianDate": "2026-10-12",
+    "clientSignature": "Example Client",
+    "clientDate": "2026-10-12"
+  },
+  "lines": [{ "description": "OEM Battery", "detail": "Replacement part", "qty": 1, "unitPriceCents": 120000, "totalCents": 120000 }]
 }
 ```
 

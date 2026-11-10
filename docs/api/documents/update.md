@@ -12,7 +12,7 @@ Update a draft document.
 Path parameter:
 - `id` (string, required): document ID
 
-Body: Partial document fields (client, lines, work items, terms, notes).
+Body: Partial document fields (client, lines, work items, intake items, diagnostic sections, authorization/sign-off, terms, notes). Send `intakeItems` or `diagnosticSections` as complete replacement arrays. `authorization` replaces the existing authorization object; omit a field to retain its current value.
 
 ## Response
 - Status: `200 OK`
@@ -37,6 +37,14 @@ Request: `PUT /api/v1/documents/doc-draft-1`
 ```json
 {
   "scope": "Battery and fan cleaning",
+  "intakeItems": [{ "label": "Charger", "value": "Received with laptop" }],
+  "diagnosticSections": [{ "title": "Battery test", "status": "PASSED", "details": "Replacement battery tested successfully." }],
+  "authorization": {
+    "technicianSignature": "Example Technician",
+    "technicianDate": "2026-10-12",
+    "clientSignature": "Example Client",
+    "clientDate": "2026-10-12"
+  },
   "notes": "Completed test"
 }
 ```

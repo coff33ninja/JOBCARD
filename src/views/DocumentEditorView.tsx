@@ -11,7 +11,17 @@ import {
   Save,
   RotateCw,
 } from 'lucide-react';
-import { Doc, DocType, Client, LineItem, WorkItem, Settings } from '../api/types.ts';
+import {
+  Authorization,
+  Client,
+  DiagnosticSection,
+  Doc,
+  DocType,
+  IntakeItem,
+  LineItem,
+  Settings,
+  WorkItem,
+} from '../api/types.ts';
 import { calculateTotals, calculateLineTotal } from '../domain/totals.ts';
 import { formatCents, parseRandsToCents } from '../domain/money.ts';
 import { ClientModal } from '../components/ClientModal.tsx';
@@ -38,6 +48,14 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
   const [jobCardId, setJobCardId] = useState<string | null>(null);
   const [quotationId, setQuotationId] = useState<string | null>(null);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+  const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([]);
+  const [diagnosticSections, setDiagnosticSections] = useState<DiagnosticSection[]>([]);
+  const [authorization, setAuthorization] = useState<Authorization>({
+    technicianSignature: '',
+    technicianDate: '',
+    clientSignature: '',
+    clientDate: '',
+  });
   const [lines, setLines] = useState<LineItem[]>([]);
   const [depositRands, setDepositRands] = useState<string>('');
   const [terms, setTerms] = useState<string>('');
@@ -93,6 +111,14 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           setJobCardId(doc.jobCardId);
           setQuotationId(doc.quotationId);
           setWorkItems(doc.workItems || []);
+          setIntakeItems(doc.intakeItems || []);
+          setDiagnosticSections(doc.diagnosticSections || []);
+          setAuthorization(doc.authorization || {
+            technicianSignature: '',
+            technicianDate: '',
+            clientSignature: '',
+            clientDate: '',
+          });
           setLines(doc.lines || []);
           setDepositRands(doc.depositCents ? (doc.depositCents / 100).toFixed(2) : '');
           setTerms(doc.terms);
@@ -111,7 +137,7 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
             setTerms(`Quotation valid for ${settingsData.quoteValidityDays || 14} days.`);
           }
           // Default initial empty line
-          setLines([{ description: '', qty: 1, unitPriceCents: 0, totalCents: 0 }]);
+          setLines([{ description: '', detail: '', qty: 1, unitPriceCents: 0, totalCents: 0 }]);
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -135,7 +161,7 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
   const calculated = calculateTotals(lines, taxRate, existingDoc?.payments || []);
 
   const handleAddLine = () => {
-    setLines([...lines, { description: '', qty: 1, unitPriceCents: 0, totalCents: 0 }]);
+    setLines([...lines, { description: '', detail: '', qty: 1, unitPriceCents: 0, totalCents: 0 }]);
   };
 
   const handleUpdateLine = (index: number, field: keyof LineItem, val: string | number) => {
@@ -144,6 +170,8 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
 
     if (field === 'description') {
       current.description = String(val);
+    } else if (field === 'detail') {
+      current.detail = String(val);
     } else if (field === 'qty') {
       const q = typeof val === 'number' ? val : parseFloat(String(val)) || 0;
       current.qty = q > 0 ? q : 1;
@@ -174,6 +202,42 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
     setWorkItems(workItems.filter((_, i) => i !== index));
   };
 
+  const handleAddIntakeItem = () => {
+    setIntakeItems([...intakeItems, { label: '', value: '' }]);
+  };
+
+  const handleUpdateIntakeItem = (index: number, field: keyof IntakeItem, val: string) => {
+    const updated = [...intakeItems];
+    updated[index] = { ...updated[index], [field]: val };
+    setIntakeItems(updated);
+  };
+
+  const handleRemoveIntakeItem = (index: number) => {
+    setIntakeItems(intakeItems.filter((_, i) => i !== index));
+  };
+
+  const handleAddDiagnosticSection = () => {
+    setDiagnosticSections([...diagnosticSections, { title: '', status: '', details: '' }]);
+  };
+
+  const handleUpdateDiagnosticSection = (
+    index: number,
+    field: keyof DiagnosticSection,
+    val: string
+  ) => {
+    const updated = [...diagnosticSections];
+    updated[index] = { ...updated[index], [field]: val };
+    setDiagnosticSections(updated);
+  };
+
+  const handleRemoveDiagnosticSection = (index: number) => {
+    setDiagnosticSections(diagnosticSections.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateAuthorization = (field: keyof Authorization, val: string) => {
+    setAuthorization({ ...authorization, [field]: val });
+  };
+
   const validateForm = (): boolean => {
     if (!clientId) {
       setError('Please select a client');
@@ -196,6 +260,16 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
       const depositCents = depositRands ? parseRandsToCents(depositRands) : null;
       const cleanLines = lines.filter((l) => l.description.trim() || l.unitPriceCents > 0);
       const cleanWorkItems = workItems.filter((w) => w.title.trim() || w.detail.trim());
+      const cleanIntakeItems = intakeItems
+        .filter((item) => item.label.trim() || item.value.trim())
+        .map((item) => ({ label: item.label.trim(), value: item.value.trim() }));
+      const cleanDiagnosticSections = diagnosticSections
+        .filter((section) => section.title.trim() || section.status.trim() || section.details.trim())
+        .map((section) => ({
+          title: section.title.trim(),
+          status: section.status.trim(),
+          details: section.details.trim(),
+        }));
 
       let savedDoc: Doc;
       if (existingDoc) {
@@ -206,6 +280,9 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           jobCardId,
           quotationId,
           workItems: cleanWorkItems,
+          intakeItems: cleanIntakeItems,
+          diagnosticSections: cleanDiagnosticSections,
+          authorization,
           lines: cleanLines,
           depositCents,
           terms: terms.trim(),
@@ -222,6 +299,9 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           jobCardId,
           quotationId,
           workItems: cleanWorkItems,
+          intakeItems: cleanIntakeItems,
+          diagnosticSections: cleanDiagnosticSections,
+          authorization,
           lines: cleanLines,
           depositCents,
           terms: terms.trim(),
@@ -473,6 +553,66 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
           </div>
         </div>
 
+        {/* Intake Inventory */}
+        <div className="space-y-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Job Intake & Equipment Inventory
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Record the equipment and condition received from the client.
+              </p>
+            </div>
+            {!isIssued && (
+              <button
+                type="button"
+                onClick={handleAddIntakeItem}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Intake Item</span>
+              </button>
+            )}
+          </div>
+          {intakeItems.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No intake items recorded.</p>
+          ) : (
+            <div className="space-y-2">
+              {intakeItems.map((item, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <input
+                    type="text"
+                    placeholder="Item (e.g. Laptop, charger)"
+                    value={item.label}
+                    onChange={(e) => handleUpdateIntakeItem(idx, 'label', e.target.value)}
+                    disabled={isIssued}
+                    className="w-1/3 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Condition / accessories / notes"
+                    value={item.value}
+                    onChange={(e) => handleUpdateIntakeItem(idx, 'value', e.target.value)}
+                    disabled={isIssued}
+                    className="w-2/3 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                  />
+                  {!isIssued && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveIntakeItem(idx)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
+                      aria-label="Remove intake item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Quotation specifics: exclusions & turnaround */}
         {type === 'quotation' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
@@ -601,14 +741,24 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
                   {lines.map((line, idx) => (
                     <tr key={idx}>
                       <td className="py-2 pr-2">
-                        <input
-                          type="text"
-                          placeholder="e.g. 1TB SSD / Labour"
-                          value={line.description}
-                          onChange={(e) => handleUpdateLine(idx, 'description', e.target.value)}
-                          disabled={isIssued}
-                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded text-xs"
-                        />
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            placeholder="e.g. 1TB SSD / Labour"
+                            value={line.description}
+                            onChange={(e) => handleUpdateLine(idx, 'description', e.target.value)}
+                            disabled={isIssued}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded text-xs"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Additional item description (optional)"
+                            value={line.detail || ''}
+                            onChange={(e) => handleUpdateLine(idx, 'detail', e.target.value)}
+                            disabled={isIssued}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded text-xs text-slate-600"
+                          />
+                        </div>
                       </td>
                       <td className="py-2 px-2">
                         <input
@@ -668,6 +818,125 @@ export const DocumentEditorView: React.FC<DocumentEditorViewProps> = ({
                   <span>Total Amount:</span>
                   <span className="font-mono">{formatCents(calculated.totalCents)}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Diagnostic Report */}
+        {type !== 'quotation' && (
+          <div className="space-y-3 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Diagnostic Findings & Resolution
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Add test results, diagnosis, and resolution details.
+                </p>
+              </div>
+              {!isIssued && (
+                <button
+                  type="button"
+                  onClick={handleAddDiagnosticSection}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Report Section</span>
+                </button>
+              )}
+            </div>
+            {diagnosticSections.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">No diagnostic findings recorded.</p>
+            ) : (
+              <div className="space-y-3">
+                {diagnosticSections.map((section, idx) => (
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+                    <input
+                      type="text"
+                      placeholder="Section (e.g. Initial health audit)"
+                      value={section.title}
+                      onChange={(e) => handleUpdateDiagnosticSection(idx, 'title', e.target.value)}
+                      disabled={isIssued}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Status (e.g. Passed, Issue found)"
+                      value={section.status}
+                      onChange={(e) => handleUpdateDiagnosticSection(idx, 'status', e.target.value)}
+                      disabled={isIssued}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                    />
+                    {!isIssued && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDiagnosticSection(idx)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded justify-self-end"
+                        aria-label="Remove diagnostic section"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <textarea
+                      rows={3}
+                      placeholder="Tests performed, findings, diagnosis, or resolution"
+                      value={section.details}
+                      onChange={(e) => handleUpdateDiagnosticSection(idx, 'details', e.target.value)}
+                      disabled={isIssued}
+                      className="sm:col-span-2 px-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-xs resize-y"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Authorization & Sign-off */}
+        {type !== 'quotation' && (
+          <div className="space-y-3 pt-4 border-t border-slate-200">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Authorization & Sign-off
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">Technician</label>
+                <input
+                  type="text"
+                  placeholder="Technician signature / name"
+                  value={authorization.technicianSignature}
+                  onChange={(e) => handleUpdateAuthorization('technicianSignature', e.target.value)}
+                  disabled={isIssued}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder="Date (YYYY-MM-DD)"
+                  value={authorization.technicianDate}
+                  onChange={(e) => handleUpdateAuthorization('technicianDate', e.target.value)}
+                  disabled={isIssued}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">Client</label>
+                <input
+                  type="text"
+                  placeholder="Client signature / name"
+                  value={authorization.clientSignature}
+                  onChange={(e) => handleUpdateAuthorization('clientSignature', e.target.value)}
+                  disabled={isIssued}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder="Date (YYYY-MM-DD)"
+                  value={authorization.clientDate}
+                  onChange={(e) => handleUpdateAuthorization('clientDate', e.target.value)}
+                  disabled={isIssued}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-xs"
+                />
               </div>
             </div>
           </div>

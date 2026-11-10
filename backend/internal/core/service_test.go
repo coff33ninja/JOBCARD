@@ -1,8 +1,10 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"jobcard/internal/domain"
@@ -48,6 +50,111 @@ func wantStatus(t *testing.T, err error, status int, code string) {
 	var ae *AppError
 	if !errors.As(err, &ae) || ae.Status != status || ae.Code != code {
 		t.Fatalf("want %d %s, got %v", status, code, err)
+	}
+}
+
+func TestDocumentIntakeAndDiagnosticDataPersists(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+
+	var in DraftInput
+	err := json.Unmarshal([]byte(`{
+		"type":"invoice",
+		"clientId":"`+c.ID+`",
+		"reference":"Laptop",
+		"lines":[{"description":"SSD","detail":"1TB NVMe","qty":1,"unitPriceCents":100}],
+		"intakeItems":[{"label":"Primary storage","value":"1TB HDD"}],
+		"diagnosticSections":[{"title":"Drive health","status":"PASSED","details":"100% health"}],
+		"authorization":{
+			"technicianSignature":"Tech",
+			"technicianDate":"2026-10-12",
+			"clientSignature":"Client",
+			"clientDate":"2026-10-12"
+		}
+	}`), &in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := s.CreateDraft(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created.Lines) != 1 || created.Lines[0].Detail != "1TB NVMe" {
+		t.Fatalf("line detail did not persist: %+v", created.Lines)
+	}
+	createdJSON, err := json.Marshal(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Primary storage", "1TB HDD", "Drive health", "100% health", "Tech", "Client", "2026-10-12"} {
+		if !strings.Contains(string(createdJSON), want) {
+			t.Errorf("created document did not persist %q: %s", want, createdJSON)
+		}
+	}
+
+	var update DraftInput
+	if err := json.Unmarshal([]byte(`{
+		"intakeItems":[{"label":"Accessories","value":"Carrying bag"}],
+		"diagnosticSections":[{"title":"Resolution","status":"COMPLETE","details":"Tested stable"}],
+		"authorization":{"clientSignature":"Approved"}
+	}`), &update); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := s.UpdateDraft(created.ID, update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedJSON, err := json.Marshal(updated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Accessories", "Carrying bag", "Resolution", "Tested stable", "Approved"} {
+		if !strings.Contains(string(updatedJSON), want) {
+			t.Errorf("updated document did not persist %q: %s", want, updatedJSON)
+		}
+	}
+}
+
+func TestDocumentReportColumnsMigrateLegacyDatabase(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := mustClient(t, s)
+	doc := draft(t, s, "invoice", c.ID, 1000)
+	for _, column := range []string{"intake_items", "diagnostic_sections", "authorization"} {
+		if _, err := s.DB.Exec(`ALTER TABLE documents DROP COLUMN ` + column); err != nil {
+			t.Fatalf("prepare legacy schema without %s: %v", column, err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewService(dir, filepath.Join(dir, "Clients"), func() string { return "2026-11-08" })
+	if err != nil {
+		t.Fatalf("open legacy database: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	got, err := s.GetDocument(doc.ID)
+	if err != nil {
+		t.Fatalf("read document after migration: %v", err)
+	}
+	if len(got.IntakeItems) != 0 || len(got.DiagnosticSections) != 0 || got.Authorization != (domain.Authorization{}) {
+		t.Fatalf("legacy report fields should have empty defaults: %+v", got)
+	}
+}
+
+func TestDocumentReportDecodeErrorsAreReturned(t *testing.T) {
+	s := newTestService(t)
+	c := mustClient(t, s)
+	doc := draft(t, s, "invoice", c.ID, 1000)
+	if _, err := s.DB.Exec(`UPDATE documents SET authorization='{' WHERE id=?`, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetDocument(doc.ID); err == nil || !strings.Contains(err.Error(), "decode document authorization") {
+		t.Fatalf("want explicit authorization decode error, got %v", err)
 	}
 }
 

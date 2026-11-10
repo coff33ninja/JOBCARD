@@ -1,6 +1,9 @@
 import {
   Client,
   Doc,
+  IntakeItem,
+  DiagnosticSection,
+  Authorization,
   Settings,
   Storage,
   Capabilities,
@@ -9,10 +12,24 @@ import {
 import { resolveRelativeDate, getTodayISO } from '../domain/dates.ts';
 import { calculateTotals } from '../domain/totals.ts';
 
-export interface RawSeedDoc extends Omit<Doc, 'subtotalCents' | 'taxCents' | 'totalCents' | 'createdAt' | 'updatedAt'> {
+export interface RawSeedDoc
+  extends Omit<
+    Doc,
+    | 'subtotalCents'
+    | 'taxCents'
+    | 'totalCents'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'intakeItems'
+    | 'diagnosticSections'
+    | 'authorization'
+  > {
   subtotalCents?: number;
   taxCents?: number;
   totalCents?: number;
+  intakeItems?: IntakeItem[];
+  diagnosticSections?: DiagnosticSection[];
+  authorization?: Authorization;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +88,14 @@ export function loadSeed(raw: RawSeedData, todayISO: ISODate = getTodayISO()): L
       createdAt,
       updatedAt,
       lines,
+      intakeItems: rawDoc.intakeItems || [],
+      diagnosticSections: rawDoc.diagnosticSections || [],
+      authorization: rawDoc.authorization || {
+        technicianSignature: '',
+        technicianDate: '',
+        clientSignature: '',
+        clientDate: '',
+      },
       payments,
       subtotalCents: totals.subtotalCents,
       taxCents: totals.taxCents,
